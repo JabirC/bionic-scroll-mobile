@@ -4,10 +4,10 @@ import {
   View,
   Text,
   StyleSheet,
-  StatusBar,
   Animated,
   Dimensions,
   TouchableOpacity,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,18 +25,44 @@ const ReadingScreen = ({ navigation, route }) => {
   const [sections, setSections] = useState([]);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showUI, setShowUI] = useState(true);
 
   const textProcessor = useRef(new TextProcessor()).current;
   const storageManager = useRef(new StorageManager()).current;
   const translateY = useRef(new Animated.Value(0)).current;
+  const uiOpacity = useRef(new Animated.Value(1)).current;
   const lastScrollTime = useRef(Date.now());
+
+  // Hide navigation bar
+  useEffect(() => {
+    const parent = navigation.getParent();
+    if (parent) {
+      parent.setOptions({
+        tabBarStyle: { display: 'none' }
+      });
+    }
+    
+    return () => {
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: {
+            backgroundColor: settings.isDarkMode ? '#1e293b' : '#ffffff',
+            borderTopColor: settings.isDarkMode ? '#334155' : '#e5e7eb',
+            borderTopWidth: 1,
+            height: 90,
+            paddingBottom: 30,
+            paddingTop: 10,
+          }
+        });
+      }
+    };
+  }, [navigation, settings.isDarkMode]);
 
   useEffect(() => {
     initializeSections();
   }, []);
 
   useEffect(() => {
-    // Update reading progress
     if (sections.length > 0) {
       const progress = ((currentSectionIndex + 1) / sections.length) * 100;
       storageManager.updateReadingProgress(book.id, {
@@ -48,9 +74,7 @@ const ReadingScreen = ({ navigation, route }) => {
   }, [currentSectionIndex, sections.length]);
 
   const initializeSections = () => {
-    // Set font size based on settings
     textProcessor.setFontSize(settings.fontSize || 22);
-    
     const rawSections = textProcessor.splitTextIntoScreenSections(text);
     const processedSections = rawSections.map(section => 
       textProcessor.processSection(section, settings.bionicMode || false)
@@ -58,10 +82,18 @@ const ReadingScreen = ({ navigation, route }) => {
     
     setSections(processedSections);
     
-    // Restore reading position if available
     if (book.readingPosition && book.readingPosition.sectionIndex) {
       setCurrentSectionIndex(book.readingPosition.sectionIndex);
     }
+  };
+
+  const toggleUI = () => {
+    setShowUI(!showUI);
+    Animated.timing(uiOpacity, {
+      toValue: showUI ? 0 : 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
   };
 
   const handleGestureEvent = Animated.event(
@@ -75,23 +107,13 @@ const ReadingScreen = ({ navigation, route }) => {
     if (state === State.END) {
       const now = Date.now();
       if (now - lastScrollTime.current < 200) {
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 8,
-        }).start();
+        resetTranslation();
         return;
       }
       lastScrollTime.current = now;
 
       if (isTransitioning) {
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 8,
-        }).start();
+        resetTranslation();
         return;
       }
 
@@ -100,23 +122,25 @@ const ReadingScreen = ({ navigation, route }) => {
 
       if (shouldNavigate) {
         if (translationY < 0 && currentSectionIndex < sections.length - 1) {
-          // Swipe up - next section
           navigateToSection(currentSectionIndex + 1, 'next');
           return;
         } else if (translationY > 0 && currentSectionIndex > 0) {
-          // Swipe down - previous section
           navigateToSection(currentSectionIndex - 1, 'prev');
           return;
         }
       }
 
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
+      resetTranslation();
     }
+  };
+
+  const resetTranslation = () => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
   };
 
   const navigateToSection = (newIndex, direction) => {
@@ -126,7 +150,7 @@ const ReadingScreen = ({ navigation, route }) => {
     
     Animated.timing(translateY, {
       toValue: slideDistance,
-      duration: 250,
+      duration: 300,
       useNativeDriver: true,
     }).start(() => {
       setCurrentSectionIndex(newIndex);
@@ -134,7 +158,7 @@ const ReadingScreen = ({ navigation, route }) => {
       
       Animated.timing(translateY, {
         toValue: 0,
-        duration: 250,
+        duration: 300,
         useNativeDriver: true,
       }).start(() => {
         setIsTransitioning(false);
@@ -150,67 +174,71 @@ const ReadingScreen = ({ navigation, route }) => {
   const progress = sections.length > 0 ? ((currentSectionIndex + 1) / sections.length) * 100 : 0;
 
   return (
-    <View 
-      style={[
-        styles.container,
-        settings.isDarkMode && styles.containerDark
-      ]}
-    >
-      <StatusBar 
-        style={settings.isDarkMode ? 'light' : 'dark'}
-        backgroundColor={settings.isDarkMode ? '#0f172a' : '#ffffff'}
-        hidden={true}
-      />
-
+    <View style={[styles.container, settings.isDarkMode && styles.containerDark]}>
       {/* Progress Bar */}
-      <View style={[styles.progressBar, settings.isDarkMode && styles.progressBarDark]}>
-        <View 
-          style={[styles.progressFill, { width: `${progress}%` }]} 
-        />
-      </View>
+      <Animated.View 
+        style={[
+          styles.progressBar, 
+          settings.isDarkMode && styles.progressBarDark,
+          { opacity: uiOpacity }
+        ]}
+      >
+        <View style={[styles.progressFill, { width: `${progress}%` }]} />
+      </Animated.View>
 
       {/* Back Button */}
       <SafeAreaView edges={['top']} style={styles.backButtonContainer}>
-        <TouchableOpacity 
-          style={[styles.backButton, settings.isDarkMode && styles.backButtonDark]}
-          onPress={handleBackPress}
-        >
-          <Ionicons 
-            name="arrow-back" 
-            size={24} 
-            color={settings.isDarkMode ? '#f3f4f6' : '#111827'} 
-          />
-        </TouchableOpacity>
+        <Animated.View style={{ opacity: uiOpacity }}>
+          <TouchableOpacity 
+            style={[styles.backButton, settings.isDarkMode && styles.backButtonDark]}
+            onPress={handleBackPress}
+            activeOpacity={0.8}
+          >
+            <Ionicons 
+              name="arrow-back" 
+              size={24} 
+              color={settings.isDarkMode ? '#f8fafc' : '#1f2937'} 
+            />
+          </TouchableOpacity>
+        </Animated.View>
       </SafeAreaView>
 
       {/* Main Content */}
-      <PanGestureHandler
-        onGestureEvent={handleGestureEvent}
-        onHandlerStateChange={handleGestureStateChange}
-      >
-        <Animated.View 
-          style={[
-            styles.content,
-            { transform: [{ translateY }] }
-          ]}
-        >
-          {currentSection && (
-            <TextRenderer
-              section={currentSection}
-              settings={settings}
-              isDarkMode={settings.isDarkMode}
-            />
-          )}
-        </Animated.View>
-      </PanGestureHandler>
+      <TouchableWithoutFeedback onPress={toggleUI}>
+        <View style={styles.contentWrapper}>
+          <PanGestureHandler
+            onGestureEvent={handleGestureEvent}
+            onHandlerStateChange={handleGestureStateChange}
+          >
+            <Animated.View 
+              style={[
+                styles.content,
+                { transform: [{ translateY }] }
+              ]}
+            >
+              {currentSection && (
+                <TextRenderer
+                  section={currentSection}
+                  settings={settings}
+                  isDarkMode={settings.isDarkMode}
+                />
+              )}
+            </Animated.View>
+          </PanGestureHandler>
+        </View>
+      </TouchableWithoutFeedback>
 
       {/* Section Counter */}
       <SafeAreaView edges={['bottom']} style={styles.sectionCounterContainer}>
-        <View style={[styles.sectionCounter, settings.isDarkMode && styles.sectionCounterDark]}>
-          <Text style={[styles.sectionText, settings.isDarkMode && styles.sectionTextDark]}>
-            {currentSectionIndex + 1} / {sections.length}
-          </Text>
-        </View>
+        <Text style={[
+          styles.sectionText, 
+          settings.isDarkMode && styles.sectionTextDark
+        ]}>
+          {showUI 
+            ? `${currentSectionIndex + 1} of ${sections.length}`
+            : `${currentSectionIndex + 1}`
+          }
+        </Text>
       </SafeAreaView>
     </View>
   );
@@ -247,27 +275,30 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   backButton: {
-    marginTop: 20,
-    marginLeft: 24,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 16,
+    marginLeft: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
   backButtonDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+  },
+  contentWrapper: {
+    flex: 1,
   },
   content: {
     flex: 1,
-    paddingTop: 120,
-    paddingBottom: 120,
+    paddingTop: 100,
+    paddingBottom: 60,
     paddingHorizontal: 24,
   },
   sectionCounterContainer: {
@@ -277,27 +308,15 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 1000,
-  },
-  sectionCounter: {
-    marginBottom: 20,
+    paddingBottom: 40,
   },
   sectionText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    color: '#64748b',
   },
   sectionTextDark: {
-    color: '#e5e7eb',
-    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    color: '#94a3b8',
   },
 });
 
