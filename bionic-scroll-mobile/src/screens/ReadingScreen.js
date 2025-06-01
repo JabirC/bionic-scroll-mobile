@@ -8,10 +8,12 @@ import {
   Dimensions,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { StatusBar } from 'expo-status-bar';
 
 import TextRenderer from '../components/TextRenderer';
 import { TextProcessor } from '../utils/textProcessor';
@@ -20,12 +22,13 @@ import { StorageManager } from '../utils/storageManager';
 const { height: screenHeight } = Dimensions.get('window');
 
 const ReadingScreen = ({ navigation, route }) => {
-  const { book, text, settings } = route.params;
+  const { book, bookData, settings } = route.params;
   
   const [sections, setSections] = useState([]);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showUI, setShowUI] = useState(true);
+  const [isPageMode, setIsPageMode] = useState(false);
 
   const textProcessor = useRef(new TextProcessor()).current;
   const storageManager = useRef(new StorageManager()).current;
@@ -33,37 +36,23 @@ const ReadingScreen = ({ navigation, route }) => {
   const uiOpacity = useRef(new Animated.Value(1)).current;
   const lastScrollTime = useRef(Date.now());
 
-  // Hide navigation bar
   useEffect(() => {
-    const parent = navigation.getParent();
-    if (parent) {
-      parent.setOptions({
-        tabBarStyle: { display: 'none' }
-      });
-    }
-    
+    const unsubscribe = navigation.addListener('focus', () => {
+      StatusBar.setHidden(true);
+    });
+
     return () => {
-      if (parent) {
-        parent.setOptions({
-          tabBarStyle: {
-            backgroundColor: settings.isDarkMode ? '#1e293b' : '#ffffff',
-            borderTopColor: settings.isDarkMode ? '#334155' : '#e5e7eb',
-            borderTopWidth: 1,
-            height: 90,
-            paddingBottom: 30,
-            paddingTop: 10,
-          }
-        });
-      }
+      StatusBar.setHidden(false);
+      unsubscribe();
     };
-  }, [navigation, settings.isDarkMode]);
+  }, [navigation]);
 
   useEffect(() => {
     initializeSections();
   }, []);
 
   useEffect(() => {
-    if (sections.length > 0) {
+    if (sections.length > 0 && !isPageMode) {
       const progress = ((currentSectionIndex + 1) / sections.length) * 100;
       storageManager.updateReadingProgress(book.id, {
         sectionIndex: currentSectionIndex,
@@ -74,8 +63,26 @@ const ReadingScreen = ({ navigation, route }) => {
   }, [currentSectionIndex, sections.length]);
 
   const initializeSections = () => {
+    if (bookData.extractionFailed) {
+      // Handle page mode for failed extraction
+      setIsPageMode(true);
+      if (bookData.pages) {
+        setSections(bookData.pages);
+      } else {
+        Alert.alert('Error', 'Unable to display this book');
+        navigation.goBack();
+      }
+      return;
+    }
+
+    if (!bookData.text) {
+      Alert.alert('Error', 'No content available');
+      navigation.goBack();
+      return;
+    }
+
     textProcessor.setFontSize(settings.fontSize || 22);
-    const rawSections = textProcessor.splitTextIntoScreenSections(text);
+    const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
     const processedSections = rawSections.map(section => 
       textProcessor.processSection(section, settings.bionicMode || false)
     );
@@ -175,6 +182,8 @@ const ReadingScreen = ({ navigation, route }) => {
 
   return (
     <View style={[styles.container, settings.isDarkMode && styles.containerDark]}>
+      <StatusBar hidden />
+      
       {/* Progress Bar */}
       <Animated.View 
         style={[
@@ -186,9 +195,9 @@ const ReadingScreen = ({ navigation, route }) => {
         <View style={[styles.progressFill, { width: `${progress}%` }]} />
       </Animated.View>
 
-      {/* Back Button */}
+      {/* Back Button with improved spacing */}
       <SafeAreaView edges={['top']} style={styles.backButtonContainer}>
-        <Animated.View style={{ opacity: uiOpacity }}>
+        <Animated.View style={[styles.backButtonWrapper, { opacity: uiOpacity }]}>
           <TouchableOpacity 
             style={[styles.backButton, settings.isDarkMode && styles.backButtonDark]}
             onPress={handleBackPress}
@@ -216,29 +225,58 @@ const ReadingScreen = ({ navigation, route }) => {
                 { transform: [{ translateY }] }
               ]}
             >
-              {currentSection && (
+              {currentSection && !isPageMode && (
                 <TextRenderer
                   section={currentSection}
                   settings={settings}
                   isDarkMode={settings.isDarkMode}
                 />
               )}
+              
+              {isPageMode && currentSection && (
+                <View style={styles.pageContainer}>
+                  <Text style={[
+                    styles.pageMessage, 
+                    settings.isDarkMode && styles.pageMessageDark
+                  ]}>
+                    Page {currentSectionIndex + 1} of {sections.length}
+                  </Text>
+                  <Text style={[
+                    styles.pageNote,
+                    settings.isDarkMode && styles.pageNoteDark
+                  ]}>
+                    Text extraction failed for this document. Displaying as page.
+                  </Text>
+                  {/* Here you would implement page viewing */}
+                </View>
+              )}
             </Animated.View>
           </PanGestureHandler>
         </View>
       </TouchableWithoutFeedback>
 
-      {/* Section Counter */}
+      {/* Section Counter with better styling */}
       <SafeAreaView edges={['bottom']} style={styles.sectionCounterContainer}>
-        <Text style={[
-          styles.sectionText, 
-          settings.isDarkMode && styles.sectionTextDark
+        <Animated.View style={[
+          styles.sectionCounter,
+          settings.isDarkMode && styles.sectionCounterDark,
+          { opacity: uiOpacity }
         ]}>
-          {showUI 
-            ? `${currentSectionIndex + 1} of ${sections.length}`
-            : `${currentSectionIndex + 1}`
-          }
-        </Text>
+          <Text style={[
+            styles.sectionText, 
+            settings.isDarkMode && styles.sectionTextDark
+          ]}>
+            {currentSectionIndex + 1} of {sections.length}
+          </Text>
+          {progress > 0 && (
+            <Text style={[
+              styles.progressText,
+              settings.isDarkMode && styles.progressTextDark
+            ]}>
+              {Math.round(progress)}% complete
+            </Text>
+          )}
+        </Animated.View>
       </SafeAreaView>
     </View>
   );
@@ -274,9 +312,11 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 1000,
   },
+  backButtonWrapper: {
+    paddingTop: 24,
+    paddingLeft: 24,
+  },
   backButton: {
-    marginTop: 16,
-    marginLeft: 20,
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -284,10 +324,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowRadius: 12,
+    elevation: 8,
   },
   backButtonDark: {
     backgroundColor: 'rgba(30, 41, 59, 0.95)',
@@ -297,9 +337,34 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 100,
-    paddingBottom: 60,
-    paddingHorizontal: 24,
+    paddingTop: 140, // Increased spacing from back button
+    paddingBottom: 120,
+    paddingHorizontal: 28, // Slightly increased horizontal padding
+  },
+  pageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  pageMessage: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  pageMessageDark: {
+    color: '#e5e7eb',
+  },
+  pageNote: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  pageNoteDark: {
+    color: '#9ca3af',
   },
   sectionCounterContainer: {
     position: 'absolute',
@@ -308,15 +373,39 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 1000,
-    paddingBottom: 40,
+    paddingBottom: 140, // Account for floating tab bar
+  },
+  sectionCounter: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  sectionCounterDark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.95)',
   },
   sectionText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#64748b',
+    color: '#374151',
+    marginBottom: 2,
   },
   sectionTextDark: {
-    color: '#94a3b8',
+    color: '#e5e7eb',
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  progressTextDark: {
+    color: '#9ca3af',
   },
 });
 

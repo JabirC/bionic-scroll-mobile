@@ -19,16 +19,24 @@ export class StorageManager {
     }
   }
 
-  async saveBook(fileUri, fileInfo, extractedText) {
+  async saveBook(fileUri, fileInfo, extractionResult) {
     try {
       await this.initializeStorage();
       
       const bookId = this.generateBookId();
-      const fileName = `${bookId}.txt`;
+      const fileName = `${bookId}.json`;
       const filePath = this.booksDirectory + fileName;
       
-      // Save extracted text to file
-      await FileSystem.writeAsStringAsync(filePath, extractedText, {
+      // Save book data including text or pages
+      const bookContent = {
+        text: extractionResult.text,
+        pages: extractionResult.pages,
+        extractionFailed: extractionResult.extractionFailed,
+        message: extractionResult.message,
+        originalFileUri: fileUri
+      };
+      
+      await FileSystem.writeAsStringAsync(filePath, JSON.stringify(bookContent), {
         encoding: FileSystem.EncodingType.UTF8
       });
       
@@ -46,7 +54,10 @@ export class StorageManager {
           percentage: 0,
           lastRead: null,
         },
-        metadata: fileInfo.metadata || {}
+        metadata: {
+          ...fileInfo.metadata,
+          extractionFailed: extractionResult.extractionFailed
+        }
       };
       
       const library = await this.getLibrary();
@@ -57,6 +68,24 @@ export class StorageManager {
     } catch (error) {
       console.error('Error saving book:', error);
       throw new Error('Failed to save book');
+    }
+  }
+
+  async getBookContent(bookId) {
+    try {
+      const book = await this.getBook(bookId);
+      if (!book || !book.filePath) {
+        throw new Error('Book not found');
+      }
+      
+      const contentString = await FileSystem.readAsStringAsync(book.filePath, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
+      
+      return JSON.parse(contentString);
+    } catch (error) {
+      console.error('Error reading book content:', error);
+      throw new Error('Failed to read book');
     }
   }
 
@@ -77,23 +106,6 @@ export class StorageManager {
     } catch (error) {
       console.error('Error getting book:', error);
       return null;
-    }
-  }
-
-  async getBookText(bookId) {
-    try {
-      const book = await this.getBook(bookId);
-      if (!book || !book.filePath) {
-        throw new Error('Book not found');
-      }
-      
-      const text = await FileSystem.readAsStringAsync(book.filePath, {
-        encoding: FileSystem.EncodingType.UTF8
-      });
-      return text;
-    } catch (error) {
-      console.error('Error reading book text:', error);
-      throw new Error('Failed to read book');
     }
   }
 
@@ -124,14 +136,12 @@ export class StorageManager {
     try {
       const book = await this.getBook(bookId);
       if (book && book.filePath) {
-        // Delete the text file
         const fileInfo = await FileSystem.getInfoAsync(book.filePath);
         if (fileInfo.exists) {
           await FileSystem.deleteAsync(book.filePath);
         }
       }
       
-      // Remove from library
       const library = await this.getLibrary();
       const filteredLibrary = library.filter(book => book.id !== bookId);
       await AsyncStorage.setItem(this.libraryKey, JSON.stringify(filteredLibrary));
@@ -147,7 +157,6 @@ export class StorageManager {
     try {
       const library = await this.getLibrary();
       
-      // Delete all text files
       for (const book of library) {
         if (book.filePath) {
           try {
@@ -161,10 +170,8 @@ export class StorageManager {
         }
       }
       
-      // Clear library data
       await AsyncStorage.removeItem(this.libraryKey);
       
-      // Remove books directory and recreate it
       try {
         await FileSystem.deleteAsync(this.booksDirectory, { idempotent: true });
         await FileSystem.makeDirectoryAsync(this.booksDirectory, { intermediates: true });
@@ -181,34 +188,5 @@ export class StorageManager {
 
   generateBookId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
-  }
-
-  async getStorageUsage() {
-    try {
-      const library = await this.getLibrary();
-      let totalSize = 0;
-      
-      for (const book of library) {
-        if (book.filePath) {
-          try {
-            const fileInfo = await FileSystem.getInfoAsync(book.filePath);
-            if (fileInfo.exists && fileInfo.size) {
-              totalSize += fileInfo.size;
-            }
-          } catch (error) {
-            // Continue calculation even if one file fails
-          }
-        }
-      }
-      
-      return {
-        books: library.length,
-        sizeBytes: totalSize,
-        sizeMB: (totalSize / (1024 * 1024)).toFixed(2)
-      };
-    } catch (error) {
-      console.error('Error getting storage usage:', error);
-      return { books: 0, sizeBytes: 0, sizeMB: '0.00' };
-    }
   }
 }

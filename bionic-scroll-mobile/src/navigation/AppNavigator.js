@@ -3,12 +3,12 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, StatusBar } from 'react-native';
 
 import LibraryScreen from '../screens/LibraryScreen';
 import ReadingScreen from '../screens/ReadingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import FloatingTabBar from '../components/FloatingTabBar';
 import { SettingsManager } from '../utils/settingsManager';
 
 const Tab = createBottomTabNavigator();
@@ -43,53 +43,25 @@ const AppNavigator = () => {
     setIsDarkMode(settings.isDarkMode);
   };
 
-  const tabBarStyle = {
-    backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
-    borderTopColor: isDarkMode ? '#334155' : '#e5e7eb',
-    borderTopWidth: 1,
-    height: 90,
-    paddingBottom: 30,
-    paddingTop: 10,
-  };
-
   return (
     <NavigationContainer>
+      <StatusBar 
+        style={isDarkMode ? 'light' : 'dark'}
+        backgroundColor={isDarkMode ? '#0f172a' : '#ffffff'}
+      />
       <Tab.Navigator
-        screenOptions={({ route }) => ({
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName;
-            
-            if (route.name === 'Library') {
-              iconName = focused ? 'book' : 'book-outline';
-            } else if (route.name === 'Settings') {
-              iconName = focused ? 'settings' : 'settings-outline';
-            }
-            
-            return <Ionicons name={iconName} size={24} color={color} />;
-          },
-          tabBarActiveTintColor: '#2563eb',
-          tabBarInactiveTintColor: isDarkMode ? '#94a3b8' : '#6b7280',
+        tabBar={(props) => <FloatingTabBar {...props} isDarkMode={isDarkMode} />}
+        screenOptions={{
           headerShown: false,
-          tabBarStyle,
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: '600',
-            marginTop: 4,
-          },
-          tabBarItemStyle: {
-            paddingVertical: 8,
-          }
-        })}
+        }}
       >
         <Tab.Screen 
           name="Library" 
           component={LibraryStack}
-          options={{ tabBarLabel: 'Library' }}
         />
         <Tab.Screen 
           name="Settings" 
           component={ProfileScreen}
-          options={{ tabBarLabel: 'Settings' }}
         />
       </Tab.Navigator>
     </NavigationContainer>

@@ -3,21 +3,21 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { StorageManager } from '../utils/storageManager';
 import { SettingsManager } from '../utils/settingsManager';
 import { TextExtractor } from '../utils/textExtractor';
-import BookCard from '../components/BookCard';
+import BookShelf from '../components/BookShelf';
 
 const LibraryScreen = ({ navigation }) => {
   const [books, setBooks] = useState([]);
@@ -44,7 +44,7 @@ const LibraryScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       const library = await storageManager.getLibrary();
-      setBooks(library);
+      setBooks(library.sort((a, b) => new Date(b.lastRead || b.dateAdded) - new Date(a.lastRead || a.dateAdded)));
     } catch (error) {
       console.error('Error loading books:', error);
     } finally {
@@ -55,26 +55,14 @@ const LibraryScreen = ({ navigation }) => {
   const loadSettings = async () => {
     const userSettings = await settingsManager.getSettings();
     setSettings(userSettings);
-    
-    // Update navigation theme
-    navigation.getParent()?.setOptions({
-      tabBarStyle: {
-        backgroundColor: userSettings.isDarkMode ? '#1e293b' : '#ffffff',
-        borderTopColor: userSettings.isDarkMode ? '#334155' : '#e5e7eb',
-        borderTopWidth: 1,
-        height: 90,
-        paddingBottom: 30,
-        paddingTop: 10,
-      }
-    });
   };
 
   const handleBookPress = async (book) => {
     try {
-      const text = await storageManager.getBookText(book.id);
+      const bookData = await storageManager.getBookContent(book.id);
       navigation.navigate('Reading', { 
         book, 
-        text,
+        bookData,
         settings 
       });
     } catch (error) {
@@ -128,19 +116,19 @@ const LibraryScreen = ({ navigation }) => {
 
   const processFile = async (file) => {
     try {
-      let extractedText;
+      let extractionResult;
       
       if (file.mimeType === 'application/pdf') {
-        extractedText = await textExtractor.extractFromPDF(file.uri);
+        extractionResult = await textExtractor.extractFromPDF(file.uri);
       } else if (file.mimeType === 'application/epub+zip') {
-        extractedText = await textExtractor.extractFromEPUB(file.uri);
+        extractionResult = await textExtractor.extractFromEPUB(file.uri);
       } else {
         throw new Error('Unsupported file type');
       }
 
-      if (!extractedText || extractedText.trim().length < 100) {
-        throw new Error('No readable text found in the document');
-      }
+      const wordCount = extractionResult.text 
+        ? extractionResult.text.split(/\s+/).length 
+        : 0;
       
       const bookId = await storageManager.saveBook(
         file.uri,
@@ -150,13 +138,24 @@ const LibraryScreen = ({ navigation }) => {
           type: file.mimeType,
           metadata: {
             uploadedAt: new Date().toISOString(),
-            wordCount: extractedText.split(/\s+/).length
+            wordCount,
+            extractionFailed: extractionResult.extractionFailed,
+            hasPages: !!extractionResult.pages
           }
         },
-        extractedText
+        extractionResult
       );
 
-      Alert.alert('Success', 'Book uploaded successfully!');
+      if (extractionResult.extractionFailed) {
+        Alert.alert(
+          'Upload Complete',
+          extractionResult.message || 'Book uploaded but text extraction failed. It will be displayed page by page.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Success', 'Book uploaded successfully!');
+      }
+      
       loadBooks();
     } catch (error) {
       console.error('Error processing file:', error);
@@ -164,34 +163,48 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const renderBook = ({ item }) => (
-    <BookCard
-      book={item}
-      onPress={() => handleBookPress(item)}
-      onDelete={() => handleDeleteBook(item.id)}
-      isDarkMode={settings.isDarkMode}
-    />
-  );
-
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Ionicons 
-        name="book-outline" 
-        size={80} 
-        color={settings.isDarkMode ? '#475569' : '#9ca3af'} 
-      />
-      <Text style={[
-        styles.emptyTitle, 
-        settings.isDarkMode && styles.emptyTitleDark
-      ]}>
-        No books yet
-      </Text>
-      <Text style={[
-        styles.emptySubtitle,
-        settings.isDarkMode && styles.emptySubtitleDark
-      ]}>
-        Tap the + button to upload your first book
-      </Text>
+      <LinearGradient
+        colors={settings.isDarkMode ? ['#1e293b', '#0f172a'] : ['#f8fafc', '#e2e8f0']}
+        style={styles.emptyGradient}
+      >
+        <View style={styles.emptyContent}>
+          <Ionicons 
+            name="library-outline" 
+            size={80} 
+            color={settings.isDarkMode ? '#475569' : '#94a3b8'} 
+          />
+          <Text style={[
+            styles.emptyTitle, 
+            settings.isDarkMode && styles.emptyTitleDark
+          ]}>
+            Your Library Awaits
+          </Text>
+          <Text style={[
+            styles.emptySubtitle,
+            settings.isDarkMode && styles.emptySubtitleDark
+          ]}>
+            Add your first book to start your reading journey
+          </Text>
+          
+          <TouchableOpacity
+            style={[styles.emptyAddButton, settings.isDarkMode && styles.emptyAddButtonDark]}
+            onPress={handleUploadPress}
+            disabled={isUploading}
+            activeOpacity={0.8}
+          >
+            {isUploading ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="add" size={24} color="#ffffff" />
+                <Text style={styles.emptyAddButtonText}>Add Book</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
     </View>
   );
 
@@ -204,43 +217,57 @@ const LibraryScreen = ({ navigation }) => {
       edges={['top']}
     >
       {/* Header */}
-      <View style={[styles.header, settings.isDarkMode && styles.headerDark]}>
-        <View style={styles.headerLeft}>
-          <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
-            Library
-          </Text>
-          <Text style={[styles.subtitle, settings.isDarkMode && styles.subtitleDark]}>
-            {books.length} {books.length === 1 ? 'book' : 'books'}
-          </Text>
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={[styles.greeting, settings.isDarkMode && styles.greetingDark]}>
+              Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}
+            </Text>
+            <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
+              Your Library
+            </Text>
+          </View>
+          
+          <TouchableOpacity
+            style={[styles.addButton, settings.isDarkMode && styles.addButtonDark]}
+            onPress={handleUploadPress}
+            disabled={isUploading}
+            activeOpacity={0.8}
+          >
+            {isUploading ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Ionicons name="add" size={24} color="#ffffff" />
+            )}
+          </TouchableOpacity>
         </View>
         
-        <TouchableOpacity
-          style={[styles.addButton, settings.isDarkMode && styles.addButtonDark]}
-          onPress={handleUploadPress}
-          disabled={isUploading}
-          activeOpacity={0.7}
-        >
-          {isUploading ? (
-            <ActivityIndicator color="#ffffff" size="small" />
-          ) : (
-            <Ionicons name="add" size={24} color="#ffffff" />
-          )}
-        </TouchableOpacity>
+        {books.length > 0 && (
+          <Text style={[styles.bookCount, settings.isDarkMode && styles.bookCountDark]}>
+            {books.length} {books.length === 1 ? 'book' : 'books'}
+          </Text>
+        )}
       </View>
 
       {/* Content */}
       {books.length > 0 ? (
-        <FlatList
-          data={books}
-          renderItem={renderBook}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          refreshing={isLoading}
-          onRefresh={loadBooks}
+        <BookShelf
+          books={books}
+          onBookPress={handleBookPress}
+          onDeleteBook={handleDeleteBook}
+          isDarkMode={settings.isDarkMode}
         />
       ) : (
         !isLoading && renderEmptyState()
+      )}
+      
+      {isLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator 
+            size="large" 
+            color={settings.isDarkMode ? '#60a5fa' : '#2563eb'} 
+          />
+        </View>
       )}
     </SafeAreaView>
   );
@@ -249,47 +276,52 @@ const LibraryScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#ffffff',
   },
   containerDark: {
     backgroundColor: '#0f172a',
   },
   header: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    backgroundColor: '#fafafa',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
-  headerDark: {
-    backgroundColor: '#0f172a',
+  greeting: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#64748b',
+    marginBottom: 4,
   },
-  headerLeft: {
-    flex: 1,
+  greetingDark: {
+    color: '#94a3b8',
   },
   title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1f2937',
     letterSpacing: -0.5,
   },
   titleDark: {
     color: '#f8fafc',
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#64748b',
-    fontWeight: '500',
+  bookCount: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
   },
-  subtitleDark: {
-    color: '#94a3b8',
+  bookCountDark: {
+    color: '#9ca3af',
   },
   addButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
@@ -303,23 +335,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#1d4ed8',
     shadowColor: '#1d4ed8',
   },
-  list: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 100,
-  },
   emptyState: {
+    flex: 1,
+  },
+  emptyGradient: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyContent: {
+    alignItems: 'center',
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 26,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#1f2937',
     marginTop: 24,
-    marginBottom: 8,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   emptyTitleDark: {
     color: '#f1f5f9',
@@ -329,9 +363,37 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 32,
   },
   emptySubtitleDark: {
     color: '#94a3b8',
+  },
+  emptyAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  emptyAddButtonDark: {
+    backgroundColor: '#1d4ed8',
+  },
+  emptyAddButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
