@@ -11,13 +11,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Progress from 'react-native-progress';
 
 const { width } = Dimensions.get('window');
 const BOOK_WIDTH = (width - 80) / 3;
 const BOOK_HEIGHT = BOOK_WIDTH * 1.4;
 const BOOKS_PER_SHELF = 3;
 
-const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
+const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMode }) => {
   const [selectedBook, setSelectedBook] = useState(null);
 
   const formatDate = (dateString) => {
@@ -79,6 +80,8 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
     const coverColors = generateBookCover(book);
     const isSelected = selectedBook === book.id;
     const cleanTitle = book.name.replace(/\.(pdf|epub)$/i, '');
+    const isUploading = book.isUploading || uploadingBooks.has(book.id);
+    const uploadProgress = uploadingBooks.get(book.id) || 0;
 
     return (
       <View key={book.id} style={styles.bookContainer}>
@@ -86,11 +89,13 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
           style={[
             styles.book,
             isSelected && styles.bookSelected,
-            isDarkMode && styles.bookDark
+            isDarkMode && styles.bookDark,
+            isUploading && styles.bookUploading
           ]}
-          onPress={() => onBookPress(book)}
-          onLongPress={() => setSelectedBook(isSelected ? null : book.id)}
-          activeOpacity={0.8}
+          onPress={() => !isUploading && onBookPress(book)}
+          onLongPress={() => !isUploading && setSelectedBook(isSelected ? null : book.id)}
+          activeOpacity={isUploading ? 1 : 0.8}
+          disabled={isUploading}
         >
           {book.coverImage ? (
             <View style={styles.bookCover}>
@@ -104,6 +109,21 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
                   {book.type === 'application/pdf' ? 'PDF' : 'EPUB'}
                 </Text>
               </View>
+              {isUploading && (
+                <View style={styles.uploadOverlay}>
+                  <Progress.Circle
+                    size={40}
+                    progress={uploadProgress / 100}
+                    showsText={true}
+                    formatText={() => `${Math.round(uploadProgress)}%`}
+                    color="#ffffff"
+                    unfilledColor="rgba(255,255,255,0.3)"
+                    borderWidth={0}
+                    thickness={3}
+                    textStyle={styles.uploadProgressText}
+                  />
+                </View>
+              )}
             </View>
           ) : (
             <LinearGradient
@@ -123,12 +143,28 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
                   </Text>
                 </View>
               </View>
+              
+              {isUploading && (
+                <View style={styles.uploadOverlay}>
+                  <Progress.Circle
+                    size={40}
+                    progress={uploadProgress / 100}
+                    showsText={true}
+                    formatText={() => `${Math.round(uploadProgress)}%`}
+                    color="#ffffff"
+                    unfilledColor="rgba(255,255,255,0.3)"
+                    borderWidth={0}
+                    thickness={3}
+                    textStyle={styles.uploadProgressText}
+                  />
+                </View>
+              )}
             </LinearGradient>
           )}
           
           <View style={[styles.bookSpine, isDarkMode && styles.bookSpineDark]} />
           
-          {isSelected && (
+          {isSelected && !isUploading && (
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => {
@@ -148,20 +184,22 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
             numberOfLines={1}
             ellipsizeMode="tail"
           >
-            {cleanTitle}
+            {isUploading ? 'Uploading...' : cleanTitle}
           </Text>
           
-          <View style={styles.bookMeta}>
-            <Text style={[styles.bookDate, isDarkMode && styles.bookDateDark]}>
-              {formatDate(book.lastRead || book.dateAdded)}
-            </Text>
-            
-            {progress > 0 && (
-              <Text style={styles.bookProgress}>
-                {Math.round(progress)}%
+          {!isUploading && (
+            <View style={styles.bookMeta}>
+              <Text style={[styles.bookDate, isDarkMode && styles.bookDateDark]}>
+                {formatDate(book.lastRead || book.dateAdded)}
               </Text>
-            )}
-          </View>
+              
+              {progress > 0 && (
+                <Text style={styles.bookProgress}>
+                  {Math.round(progress)}%
+                </Text>
+              )}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -219,24 +257,27 @@ const styles = StyleSheet.create({
   book: {
     width: BOOK_WIDTH - 10,
     height: BOOK_HEIGHT,
-    borderRadius: 8,
+    borderRadius: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
     elevation: 8,
     position: 'relative',
+  },
+  bookUploading: {
+    opacity: 0.8,
   },
   bookSelected: {
     transform: [{ scale: 0.95 }],
   },
   bookDark: {
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.3,
   },
   bookCover: {
     width: '100%',
     height: '100%',
-    borderRadius: 8,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   coverImage: {
@@ -248,13 +289,28 @@ const styles = StyleSheet.create({
     bottom: 8,
     right: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  uploadOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadProgressText: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontWeight: '600',
   },
   bookContent: {
     flex: 1,
-    padding: 12,
+    padding: 16,
     justifyContent: 'space-between',
   },
   bookTitle: {
@@ -266,14 +322,13 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     lineHeight: 16,
-    marginBottom: 8,
   },
   fileTypeIndicator: {
     alignSelf: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
     backdropFilter: 'blur(10px)',
   },
   fileType: {
@@ -284,15 +339,15 @@ const styles = StyleSheet.create({
   bookSpine: {
     position: 'absolute',
     left: 0,
-    top: 8,
-    bottom: 8,
+    top: 12,
+    bottom: 12,
     width: 3,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
     borderTopRightRadius: 2,
     borderBottomRightRadius: 2,
   },
   bookSpineDark: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   deleteButton: {
     position: 'absolute',
@@ -304,9 +359,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: '#ef4444',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
   },

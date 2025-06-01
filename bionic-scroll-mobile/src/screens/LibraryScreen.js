@@ -23,7 +23,7 @@ import BookShelf from '../components/BookShelf';
 const LibraryScreen = ({ navigation }) => {
   const [books, setBooks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingBooks, setUploadingBooks] = useState(new Map());
   const [settings, setSettings] = useState({
     isDarkMode: false,
     fontSize: 22,
@@ -74,6 +74,10 @@ const LibraryScreen = ({ navigation }) => {
   };
 
   const handleBookPress = async (book) => {
+    if (uploadingBooks.has(book.id)) {
+      return; // Prevent opening while uploading
+    }
+
     try {
       const bookData = await storageManager.getBookContent(book.id);
       navigation.navigate('Reading', { 
@@ -87,19 +91,19 @@ const LibraryScreen = ({ navigation }) => {
 
   const handleDeleteBook = async (bookId) => {
     Alert.alert(
-      'Delete Book',
-      'Are you sure you want to delete this book?',
+      'Remove Book',
+      'Are you sure you want to remove this book from your library?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             try {
               await storageManager.deleteBook(bookId);
               loadBooks();
             } catch (error) {
-              Alert.alert('Error', 'Could not delete book');
+              Alert.alert('Error', 'Could not remove book');
             }
           },
         },
@@ -107,10 +111,20 @@ const LibraryScreen = ({ navigation }) => {
     );
   };
 
+  const updateUploadProgress = (tempId, progress) => {
+    setUploadingBooks(prev => {
+      const newMap = new Map(prev);
+      if (progress >= 100) {
+        newMap.delete(tempId);
+      } else {
+        newMap.set(tempId, progress);
+      }
+      return newMap;
+    });
+  };
+
   const handleUploadPress = async () => {
     try {
-      setIsUploading(true);
-
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'application/epub+zip'],
         copyToCacheDirectory: true,
@@ -124,13 +138,38 @@ const LibraryScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Document picker error:', error);
       Alert.alert('Error', 'Failed to select document');
-    } finally {
-      setIsUploading(false);
     }
   };
 
   const processFile = async (file) => {
+    const tempId = Date.now().toString();
+    
     try {
+      // Create temporary book entry for upload progress
+      const tempBook = {
+        id: tempId,
+        name: file.name,
+        type: file.mimeType,
+        isUploading: true,
+        dateAdded: new Date().toISOString(),
+        coverImage: null,
+        readingPosition: { percentage: 0 }
+      };
+
+      setBooks(prev => [tempBook, ...prev]);
+      setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
+
+      // Simulate upload progress
+      const progressInterval = setInterval(() => {
+        setUploadingBooks(prev => {
+          const current = prev.get(tempId) || 0;
+          const next = Math.min(current + Math.random() * 20, 90);
+          const newMap = new Map(prev);
+          newMap.set(tempId, next);
+          return newMap;
+        });
+      }, 300);
+
       let extractionResult;
       
       if (file.mimeType === 'application/pdf') {
@@ -140,6 +179,9 @@ const LibraryScreen = ({ navigation }) => {
       } else {
         throw new Error('Unsupported file type');
       }
+
+      clearInterval(progressInterval);
+      updateUploadProgress(tempId, 100);
 
       const wordCount = extractionResult.text 
         ? extractionResult.text.split(/\s+/).length 
@@ -161,20 +203,24 @@ const LibraryScreen = ({ navigation }) => {
         extractionResult
       );
 
-      if (extractionResult.extractionFailed) {
-        Alert.alert(
-          'Upload Complete',
-          extractionResult.message || 'Book uploaded successfully! Text extraction had limitations, but the document is viewable.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert('Success', 'Book uploaded and processed successfully!');
-      }
+      // Remove temp book and reload library
+      setTimeout(() => {
+        setBooks(prev => prev.filter(book => book.id !== tempId));
+        loadBooks();
+      }, 500);
       
-      loadBooks();
     } catch (error) {
       console.error('Error processing file:', error);
-      Alert.alert('Error', error.message || 'Failed to process the document');
+      
+      // Remove temp book on error
+      setBooks(prev => prev.filter(book => book.id !== tempId));
+      setUploadingBooks(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(tempId);
+        return newMap;
+      });
+      
+      Alert.alert('Upload Failed', error.message || 'Failed to process the document');
     }
   };
 
@@ -185,43 +231,38 @@ const LibraryScreen = ({ navigation }) => {
         style={styles.emptyGradient}
       >
         <View style={styles.emptyContent}>
-          <Ionicons 
-            name="library-outline" 
-            size={80} 
-            color={settings.isDarkMode ? '#475569' : '#94a3b8'} 
-          />
+          <View style={[styles.emptyIcon, settings.isDarkMode && styles.emptyIconDark]}>
+            <Ionicons 
+              name="book" 
+              size={32} 
+              color={settings.isDarkMode ? '#60a5fa' : '#2563eb'} 
+            />
+          </View>
           <Text style={[
             styles.emptyTitle, 
             settings.isDarkMode && styles.emptyTitleDark
           ]}>
-            Your Library Awaits
+            Start Your Reading Journey
           </Text>
           <Text style={[
             styles.emptySubtitle,
             settings.isDarkMode && styles.emptySubtitleDark
           ]}>
-            Add your first book to start your reading journey
+            Upload your first book to begin reading with our enhanced experience
           </Text>
-          
-          <TouchableOpacity
-            style={[styles.emptyAddButton, settings.isDarkMode && styles.emptyAddButtonDark]}
-            onPress={handleUploadPress}
-            disabled={isUploading}
-            activeOpacity={0.8}
-          >
-            {isUploading ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="add" size={24} color="#ffffff" />
-                <Text style={styles.emptyAddButtonText}>Add Book</Text>
-              </>
-            )}
-          </TouchableOpacity>
         </View>
       </LinearGradient>
     </View>
   );
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 6) return 'Good Night';
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    if (hour < 22) return 'Good Evening';
+    return 'Good Night';
+  };
 
   return (
     <SafeAreaView 
@@ -233,39 +274,36 @@ const LibraryScreen = ({ navigation }) => {
     >
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <View>
+          <View style={styles.headerText}>
             <Text style={[styles.greeting, settings.isDarkMode && styles.greetingDark]}>
-              Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}
+              {getGreeting()}
             </Text>
             <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
-              Your Library
+              {books.length > 0 ? `${books.length} Books` : 'Library'}
             </Text>
           </View>
           
           <TouchableOpacity
             style={[styles.addButton, settings.isDarkMode && styles.addButtonDark]}
             onPress={handleUploadPress}
-            disabled={isUploading}
             activeOpacity={0.8}
           >
-            {isUploading ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Ionicons name="add" size={24} color="#ffffff" />
-            )}
+            <LinearGradient
+              colors={settings.isDarkMode ? ['#1d4ed8', '#2563eb'] : ['#2563eb', '#1d4ed8']}
+              style={styles.addButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="add" size={20} color="#ffffff" />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
-        
-        {books.length > 0 && (
-          <Text style={[styles.bookCount, settings.isDarkMode && styles.bookCountDark]}>
-            {books.length} {books.length === 1 ? 'book' : 'books'}
-          </Text>
-        )}
       </View>
 
       {books.length > 0 ? (
         <BookShelf
           books={books}
+          uploadingBooks={uploadingBooks}
           onBookPress={handleBookPress}
           onDeleteBook={handleDeleteBook}
           isDarkMode={settings.isDarkMode}
@@ -278,7 +316,7 @@ const LibraryScreen = ({ navigation }) => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator 
             size="large" 
-            color={settings.isDarkMode ? '#60a5fa' : '#2563eb'} 
+            color={settings.isDarkMode ? '#60a5fa'  : '#2563eb'} 
           />
         </View>
       )}
@@ -297,16 +335,18 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+  },
+  headerText: {
+    flex: 1,
   },
   greeting: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     color: '#64748b',
     marginBottom: 4,
@@ -315,38 +355,33 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#1f2937',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   titleDark: {
     color: '#f8fafc',
   },
-  bookCount: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  bookCountDark: {
-    color: '#9ca3af',
-  },
   addButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#2563eb',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     shadowColor: '#2563eb',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
     elevation: 8,
   },
   addButtonDark: {
-    backgroundColor: '#1d4ed8',
     shadowColor: '#1d4ed8',
+  },
+  addButtonGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyState: {
     flex: 1,
@@ -360,11 +395,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 40,
   },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  emptyIconDark: {
+    backgroundColor: 'rgba(96, 165, 250, 0.1)',
+  },
   emptyTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#1f2937',
-    marginTop: 24,
     marginBottom: 12,
     textAlign: 'center',
   },
@@ -376,32 +422,9 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 32,
   },
   emptySubtitleDark: {
     color: '#94a3b8',
-  },
-  emptyAddButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  emptyAddButtonDark: {
-    backgroundColor: '#1d4ed8',
-  },
-  emptyAddButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
   loadingContainer: {
     flex: 1,

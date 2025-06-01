@@ -74,11 +74,13 @@ export class TextProcessor {
   splitTextIntoScreenSections(text) {
     const { maxChars, availableHeight } = this.calculateSectionCapacity();
     
+    // Preserve more of the original formatting
     const normalizedText = text
       .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\n{4,}/g, '\n\n\n') // Keep up to 3 line breaks
       .trim();
     
+    // Split on double line breaks but preserve intentional spacing
     const paragraphs = normalizedText.split(/\n\s*\n/).filter(p => p.trim());
     const sections = [];
     let currentSection = '';
@@ -126,7 +128,7 @@ export class TextProcessor {
             content: currentSection.trim(),
             estimatedHeight: currentHeight,
             id: sections.length,
-            startCharIndex: currentCharIndex - currentSection.length,
+            startCharIndex: currentCharIndex -currentSection.length,
             endCharIndex: currentCharIndex,
             characterCount: currentSection.length
           });
@@ -202,14 +204,15 @@ export class TextProcessor {
   }
 
   splitIntoSentences(text) {
+    // Improved sentence splitting that preserves more context
     const sentences = [];
-    const regex = /[.!?]+[\s'"]*(?=[A-Z])|[.!?]+$/g;
+    const regex = /[.!?]+[\s'"]*(?=[A-Z\n])|[.!?]+$/g;
     let lastIndex = 0;
     let match;
 
     while ((match = regex.exec(text)) !== null) {
       const sentence = text.substring(lastIndex, match.index + match[0].length).trim();
-      if (sentence) {
+      if (sentence && sentence.length > 3) { // Avoid very short segments
         sentences.push(sentence);
       }
       lastIndex = match.index + match[0].length;
@@ -306,10 +309,18 @@ export class TextProcessor {
   }
 
   formatForReading(text) {
+    // Better preservation of formatting and line breaks
     return text
-      .split(/\n\s*\n/)
+      .split(/\n\s*\n/) // Split on paragraph breaks
       .filter(p => p.trim())
-      .map(p => `<p>${p.trim()}</p>`)
+      .map(p => {
+        // Preserve intentional line breaks within paragraphs
+        const processedParagraph = p
+          .split('\n')
+          .map(line => line.trim())
+          .join('<br/>');
+        return `<p>${processedParagraph}</p>`;
+      })
       .join('');
   }
 

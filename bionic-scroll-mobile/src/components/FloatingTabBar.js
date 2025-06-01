@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { SettingsManager } from '../utils/settingsManager';
 
 const { width } = Dimensions.get('window');
@@ -18,16 +19,18 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const settingsManager = new SettingsManager();
 
-  useEffect(() => {
-    loadTheme();
-    
-    // Listen for focus events to update theme
-    const unsubscribe = navigation.addListener('state', () => {
+  useFocusEffect(
+    React.useCallback(() => {
       loadTheme();
-    });
-    
-    return unsubscribe;
-  }, [navigation]);
+      
+      // Set up listener for settings changes
+      const interval = setInterval(loadTheme, 100);
+      
+      return () => {
+        clearInterval(interval);
+      };
+    }, [])
+  );
 
   const loadTheme = async () => {
     const settings = await settingsManager.getSettings();
@@ -35,8 +38,8 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 15) }]}>
-      <Animated.View style={[
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 15 }]}>
+      <View style={[
         styles.tabContainer,
         isDarkMode && styles.tabContainerDark
       ]}>
@@ -59,9 +62,9 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
           const getIconName = () => {
             switch (route.name) {
               case 'Library':
-                return isFocused ? 'library' : 'library-outline';
+                return 'book';
               case 'Settings':
-                return isFocused ? 'settings' : 'settings-outline';
+                return 'settings-sharp';
               default:
                 return 'circle';
             }
@@ -70,29 +73,31 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
           return (
             <TouchableOpacity
               key={route.key}
-              activeOpacity={0.7}
+              activeOpacity={0.6}
               onPress={onPress}
               style={[
                 styles.tab,
-                isFocused && styles.tabFocused,
-                isFocused && isDarkMode && styles.tabFocusedDark
+                isFocused && [
+                  styles.tabFocused,
+                  isDarkMode ? styles.tabFocusedDark : styles.tabFocusedLight
+                ]
               ]}
             >
               <Ionicons
                 name={getIconName()}
-                size={22}
+                size={isFocused ? 24 : 22}
                 color={
                   isFocused 
-                    ? '#ffffff' 
+                    ? '#ffffff'
                     : isDarkMode 
-                      ? '#94a3b8' 
-                      : '#6b7280'
+                      ? '#64748b' 
+                      : '#9ca3af'
                 }
               />
             </TouchableOpacity>
           );
         })}
-      </Animated.View>
+      </View>
     </View>
   );
 };
@@ -107,31 +112,41 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 25,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     marginHorizontal: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-    backdropFilter: 'blur(10px)',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 12,
+    backdropFilter: 'blur(20px)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   tabContainerDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    borderColor: 'rgba(71, 85, 105, 0.2)',
   },
   tab: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderRadius: 18,
-    marginHorizontal: 4,
-    minWidth: 50,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 20,
+    minWidth: 60,
+    marginHorizontal: 2,
   },
   tabFocused: {
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tabFocusedLight: {
     backgroundColor: '#2563eb',
   },
   tabFocusedDark: {
