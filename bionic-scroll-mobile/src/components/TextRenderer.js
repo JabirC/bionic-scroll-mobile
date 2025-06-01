@@ -13,17 +13,19 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
       <style>
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+          font-family: 'Times New Roman', 'Minion Pro', 'PT Serif', 'Georgia', serif;
           font-size: ${fontSize}px;
-          line-height: 1.7;
+          line-height: 1.8;
           margin: 0;
           padding: 20px;
           padding-bottom: 40px;
-          background-color: ${isDarkMode ? '#0f172a' : '#ffffff'};
-          color: ${isDarkMode ? '#f3f4f6' : '#111827'};
+          background-color: ${isDarkMode ? '#000000' : '#ffffff'};
+          color: ${isDarkMode ? '#f3f4f6' : '#1a1a1a'};
           overflow-x: hidden;
           min-height: 100vh;
           box-sizing: border-box;
+          font-weight: 400;
+          letter-spacing: 0.3px;
         }
         
         .content {
@@ -36,10 +38,14 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
           margin: 0 0 ${fontSize * 1.2}px 0;
           text-align: left;
           font-weight: 400;
-          letter-spacing: 0.01em;
           word-wrap: break-word;
           overflow-wrap: break-word;
           hyphens: auto;
+          text-indent: ${fontSize * 1.2}px;
+        }
+        
+        p:first-child {
+          text-indent: 0;
         }
         
         p:last-child {

@@ -23,7 +23,6 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
     React.useCallback(() => {
       loadTheme();
       
-      // Set up listener for settings changes
       const interval = setInterval(loadTheme, 100);
       
       return () => {
@@ -90,8 +89,8 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
                   isFocused 
                     ? '#ffffff'
                     : isDarkMode 
-                      ? '#64748b' 
-                      : '#9ca3af'
+                      ? '#666666' 
+                      : '#999999'
                 }
               />
             </TouchableOpacity>
@@ -112,7 +111,7 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 28,
     paddingHorizontal: 8,
     paddingVertical: 8,
@@ -124,11 +123,11 @@ const styles = StyleSheet.create({
     elevation: 12,
     backdropFilter: 'blur(20px)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   tabContainerDark: {
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderColor: 'rgba(71, 85, 105, 0.2)',
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   tab: {
     alignItems: 'center',
@@ -140,17 +139,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
   },
   tabFocused: {
-    shadowColor: '#2563eb',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
   tabFocusedLight: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#000000',
   },
   tabFocusedDark: {
-    backgroundColor: '#1e40af',
+    backgroundColor: '#ffffff',
   },
 });
 

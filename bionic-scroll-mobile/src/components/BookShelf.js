@@ -39,16 +39,16 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
 
   const generateBookCover = (book) => {
     const colors = [
-      ['#667eea', '#764ba2'],
-      ['#f093fb', '#f5576c'],
-      ['#4facfe', '#00f2fe'],
-      ['#43e97b', '#38f9d7'],
-      ['#fa709a', '#fee140'],
-      ['#a8edea', '#fed6e3'],
-      ['#ff9a9e', '#fecfef'],
-      ['#ffecd2', '#fcb69f'],
-      ['#84fab0', '#8fd3f4'],
-      ['#a18cd1', '#fbc2eb'],
+      ['#1f2937', '#4b5563'],
+      ['#374151', '#6b7280'],
+      ['#111827', '#374151'],
+      ['#0f172a', '#1e293b'],
+      ['#18181b', '#3f3f46'],
+      ['#27272a', '#52525b'],
+      ['#171717', '#404040'],
+      ['#0c0a09', '#292524'],
+      ['#1c1917', '#44403c'],
+      ['#451a03', '#78350f'],
     ];
     
     const hash = book.name.split('').reduce((a, b) => {
@@ -111,6 +111,7 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
               </View>
               {isUploading && (
                 <View style={styles.uploadOverlay}>
+                  <View style={styles.uploadFilter} />
                   <Progress.Circle
                     size={40}
                     progress={uploadProgress / 100}
@@ -146,6 +147,7 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
               
               {isUploading && (
                 <View style={styles.uploadOverlay}>
+                  <View style={styles.uploadFilter} />
                   <Progress.Circle
                     size={40}
                     progress={uploadProgress / 100}
@@ -184,7 +186,7 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
             numberOfLines={1}
             ellipsizeMode="tail"
           >
-            {isUploading ? 'Uploading...' : cleanTitle}
+            {isUploading ? 'Processing...' : cleanTitle}
           </Text>
           
           {!isUploading && (
@@ -299,9 +301,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  uploadFilter: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   uploadProgressText: {
     fontSize: 10,
@@ -316,12 +325,13 @@ const styles = StyleSheet.create({
   bookTitle: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '500',
     textAlign: 'center',
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     lineHeight: 16,
+    fontFamily: 'System',
   },
   fileTypeIndicator: {
     alignSelf: 'center',
@@ -335,6 +345,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: '600',
+    fontFamily: 'System',
   },
   bookSpine: {
     position: 'absolute',
@@ -356,10 +367,10 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#ef4444',
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#ef4444',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -373,12 +384,13 @@ const styles = StyleSheet.create({
   },
   bookLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '400',
     color: '#374151',
     textAlign: 'center',
     marginBottom: 4,
     lineHeight: 14,
     width: '100%',
+    fontFamily: 'System',
   },
   bookLabelDark: {
     color: '#d1d5db',
@@ -391,15 +403,17 @@ const styles = StyleSheet.create({
   bookDate: {
     fontSize: 10,
     color: '#6b7280',
-    fontWeight: '500',
+    fontWeight: '400',
+    fontFamily: 'System',
   },
   bookDateDark: {
     color: '#9ca3af',
   },
   bookProgress: {
     fontSize: 10,
-    color: '#2563eb',
+    color: '#000000',
     fontWeight: '600',
+    fontFamily: 'System',
   },
 });
 

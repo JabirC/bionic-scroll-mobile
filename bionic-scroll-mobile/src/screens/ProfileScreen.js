@@ -21,7 +21,6 @@ const ProfileScreen = ({ navigation }) => {
     isDarkMode: false,
     fontSize: 22,
     bionicMode: false,
-    useOriginalReader: false,
   });
 
   const settingsManager = new SettingsManager();
@@ -84,7 +83,7 @@ const ProfileScreen = ({ navigation }) => {
           <Ionicons 
             name={icon} 
             size={20} 
-            color={settings.isDarkMode ? '#60a5fa' : '#2563eb'} 
+            color={settings.isDarkMode ? '#ffffff' : '#000000'} 
           />
         </View>
         <Text style={[styles.settingTitle, settings.isDarkMode && styles.settingTitleDark]}>
@@ -147,9 +146,9 @@ const ProfileScreen = ({ navigation }) => {
             <Switch
               value={settings.isDarkMode}
               onValueChange={(value) => updateSetting('isDarkMode', value)}
-              trackColor={{ false: '#d1d5db', true: '#2563eb' }}
+              trackColor={{ false: '#e5e5e5', true: '#000000' }}
               thumbColor='#ffffff'
-              ios_backgroundColor="#d1d5db"
+              ios_backgroundColor="#e5e5e5"
             />
           )}
 
@@ -159,21 +158,9 @@ const ProfileScreen = ({ navigation }) => {
             <Switch
               value={settings.bionicMode}
               onValueChange={(value) => updateSetting('bionicMode', value)}
-              trackColor={{ false: '#d1d5db', true: '#2563eb' }}
+              trackColor={{ false: '#e5e5e5', true: '#000000' }}
               thumbColor='#ffffff'
-              ios_backgroundColor="#d1d5db"
-            />
-          )}
-
-          {renderSettingRow(
-            'reader',
-            'Original Format Reader',
-            <Switch
-              value={settings.useOriginalReader}
-              onValueChange={(value) => updateSetting('useOriginalReader', value)}
-              trackColor={{ false: '#d1d5db', true: '#2563eb' }}
-              thumbColor='#ffffff'
-              ios_backgroundColor="#d1d5db"
+              ios_backgroundColor="#e5e5e5"
             />
           )}
 
@@ -195,7 +182,7 @@ const ProfileScreen = ({ navigation }) => {
             <Ionicons 
               name="chevron-forward" 
               size={16} 
-              color={settings.isDarkMode ? '#94a3b8' : '#6b7280'} 
+              color={settings.isDarkMode ? '#9ca3af' : '#6b7280'} 
             />,
             handleClearLibrary
           )}
@@ -222,27 +209,28 @@ const ProfileScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#ffffff',
   },
   containerDark: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#000000',
   },
   header: {
     paddingHorizontal: 24,
     paddingVertical: 20,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#ffffff',
   },
   headerDark: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#000000',
   },
   title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.5,
+    fontSize: 24,
+    fontWeight: '300',
+    color: '#000000',
+    letterSpacing: -0.3,
+    fontFamily: 'System',
   },
   titleDark: {
-    color: '#f8fafc',
+    color: '#ffffff',
   },
   content: {
     flex: 1,
@@ -252,13 +240,14 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#6b7280',
     marginBottom: 16,
+    fontFamily: 'System',
   },
   sectionTitleDark: {
-    color: '#e2e8f0',
+    color: '#9ca3af',
   },
   settingRow: {
     flexDirection: 'row',
@@ -266,17 +255,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
     paddingHorizontal: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   settingRowDark: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#1a1a1a',
   },
   settingLeft: {
     flexDirection: 'row',
@@ -287,33 +271,35 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#e5e5e5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
   },
   iconContainerDark: {
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: '#333333',
   },
   settingTitle: {
     fontSize: 16,
-    color: '#1f2937',
-    fontWeight: '500',
+    color: '#000000',
+    fontWeight: '400',
+    fontFamily: 'System',
   },
   settingTitleDark: {
-    color: '#f1f5f9',
+    color: '#ffffff',
   },
   settingRight: {
     alignItems: 'center',
   },
   settingValue: {
     fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
+    color: '#6b7280',
+    fontWeight: '400',
     marginRight: 8,
+    fontFamily: 'System',
   },
   settingValueDark: {
-    color: '#94a3b8',
+    color: '#9ca3af',
   },
   fontSizeContainer: {
     flexDirection: 'row',
@@ -323,30 +309,31 @@ const styles = StyleSheet.create({
     width: 40,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#e5e5e5',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#e5e5e5',
   },
   fontSizeButtonDark: {
-    backgroundColor: '#374151',
-    borderColor: '#4b5563',
+    backgroundColor: '#333333',
+    borderColor: '#333333',
   },
   fontSizeButtonSelected: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
+    backgroundColor: '#000000',
+    borderColor: '#000000',
   },
   fontSizeButtonSelectedDark: {
-    backgroundColor: '#1d4ed8',
-    borderColor: '#1d4ed8',
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
   },
   fontSizeLabel: {
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#6b7280',
+    fontFamily: 'System',
   },
   fontSizeLabelDark: {
-    color: '#d1d5db',
+    color: '#9ca3af',
   },
   fontSizeLabelSelected: {
     color: '#ffffff',

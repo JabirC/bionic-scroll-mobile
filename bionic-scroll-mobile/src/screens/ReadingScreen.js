@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import TextRenderer from '../components/TextRenderer';
 import { TextProcessor } from '../utils/textProcessor';
@@ -148,36 +147,39 @@ const ReadingScreen = ({ navigation, route }) => {
       return;
     }
 
-    setShowUI(!showUI);
-    Animated.timing(uiOpacity, {
-      toValue: showUI ? 0 : 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-
-    if (!showUI) {
-      showSectionCarouselWithDelay();
-    }
-  };
-
-  const showSectionCarouselWithDelay = () => {
-    setTimeout(() => {
-      setShowSectionCarousel(true);
-      Animated.timing(carouselOpacity, {
-        toValue: 1,
-        duration: 300,
+    const newShowUI = !showUI;
+    setShowUI(newShowUI);
+    setShowSectionCarousel(newShowUI);
+    
+    Animated.parallel([
+      Animated.timing(uiOpacity, {
+        toValue: newShowUI ? 1 : 0,
+        duration: 200,
         useNativeDriver: true,
-      }).start();
-    }, 200);
+      }),
+      Animated.timing(carouselOpacity, {
+        toValue: newShowUI ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start();
   };
 
   const hideSectionCarousel = () => {
-    Animated.timing(carouselOpacity, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
+    Animated.parallel([
+      Animated.timing(uiOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(carouselOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
       setShowSectionCarousel(false);
+      setShowUI(true);
     });
   };
 
@@ -255,12 +257,6 @@ const ReadingScreen = ({ navigation, route }) => {
   const jumpToSection = (index) => {
     setCurrentSectionIndex(index);
     hideSectionCarousel();
-    setShowUI(true);
-    Animated.timing(uiOpacity, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
   };
 
   const handleBackPress = () => {
@@ -274,33 +270,33 @@ const ReadingScreen = ({ navigation, route }) => {
       const isCurrentSection = index === currentSectionIndex;
       const sectionContent = isPageMode 
         ? `Page ${index + 1}`
-        : item.content.replace(/<[^>]*>/g, '').substring(0, 150) + '...';
+        : item.content.replace(/<[^>]*>/g, '').substring(0, 100) + '...';
 
       return (
         <TouchableOpacity
           style={[
-            styles.sectionItem,
-            settings.isDarkMode && styles.sectionItemDark,
-            isCurrentSection && styles.sectionItemActive,
-            isCurrentSection && settings.isDarkMode && styles.sectionItemActiveDark
+            styles.pageItem,
+            settings.isDarkMode && styles.pageItemDark,
+            isCurrentSection && styles.pageItemActive,
+            isCurrentSection && settings.isDarkMode && styles.pageItemActiveDark
           ]}
           onPress={() => jumpToSection(index)}
           activeOpacity={0.7}
         >
           <Text style={[
-            styles.sectionNumber,
-            settings.isDarkMode && styles.sectionNumberDark,
-            isCurrentSection && styles.sectionNumberActive
+            styles.pageNumber,
+            settings.isDarkMode && styles.pageNumberDark,
+            isCurrentSection && styles.pageNumberActive
           ]}>
             {index + 1}
           </Text>
           <Text 
             style={[
-              styles.sectionPreview,
-              settings.isDarkMode && styles.sectionPreviewDark,
-              isCurrentSection && styles.sectionPreviewActive
+              styles.pagePreview,
+              settings.isDarkMode && styles.pagePreviewDark,
+              isCurrentSection && styles.pagePreviewActive
             ]}
-            numberOfLines={3}
+            numberOfLines={4}
           >
             {sectionContent}
           </Text>
@@ -315,26 +311,10 @@ const ReadingScreen = ({ navigation, route }) => {
           { opacity: carouselOpacity }
         ]}
       >
-        <LinearGradient
-          colors={settings.isDarkMode 
-            ? ['transparent', 'rgba(15, 23, 42, 0.95)', 'rgba(15, 23, 42, 0.95)', 'transparent']
-            : ['transparent', 'rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.95)', 'transparent']
-          }
-          style={styles.carouselGradient}
-        >
-          <View style={styles.carouselHeader}>
-            <Text style={[styles.carouselTitle, settings.isDarkMode && styles.carouselTitleDark]}>
-              {isPageMode ? 'Pages' : 'Sections'}
-            </Text>
-            <TouchableOpacity onPress={hideSectionCarousel} style={styles.carouselClose}>
-              <Ionicons 
-                name="close" 
-                size={20} 
-                color={settings.isDarkMode ? '#94a3b8' : '#6b7280'} 
-              />
-            </TouchableOpacity>
-          </View>
-          
+        <View style={[
+          styles.carouselBackground,
+          settings.isDarkMode && styles.carouselBackgroundDark
+        ]}>
           <FlatList
             data={sections}
             renderItem={renderSectionItem}
@@ -344,12 +324,12 @@ const ReadingScreen = ({ navigation, route }) => {
             contentContainerStyle={styles.carouselContent}
             initialScrollIndex={Math.max(0, currentSectionIndex - 1)}
             getItemLayout={(data, index) => ({
-              length: 200,
-              offset: 200 * index,
+              length: 120,
+              offset: 130 * index,
               index,
             })}
           />
-        </LinearGradient>
+        </View>
       </Animated.View>
     );
   };
@@ -401,7 +381,7 @@ const ReadingScreen = ({ navigation, route }) => {
             <Ionicons 
               name="close" 
               size={24} 
-              color={settings.isDarkMode ? '#f8fafc' : '#1f2937'} 
+              color={settings.isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)'} 
             />
           </TouchableOpacity>
         </Animated.View>
@@ -457,17 +437,19 @@ const ReadingScreen = ({ navigation, route }) => {
 
       {renderSectionCarousel()}
 
-      <Animated.View style={[
-        styles.sectionCounter,
-        { opacity: uiOpacity }
-      ]}>
-        <Text style={[
-          styles.sectionText, 
-          settings.isDarkMode && styles.sectionTextDark
+      <SafeAreaView edges={['bottom']} style={styles.sectionCounterContainer}>
+        <Animated.View style={[
+          styles.sectionCounter,
+          { opacity: uiOpacity }
         ]}>
-          {currentSectionIndex + 1} of {sections.length}
-        </Text>
-      </Animated.View>
+          <Text style={[
+            styles.sectionText, 
+            settings.isDarkMode && styles.sectionTextDark
+          ]}>
+            {currentSectionIndex + 1} of {sections.length}
+          </Text>
+        </Animated.View>
+      </SafeAreaView>
     </View>
   );
 };
@@ -478,7 +460,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   containerDark: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#000000',
   },
   progressBar: {
     height: 3,
@@ -494,7 +476,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#2563eb',
+    backgroundColor: '#000000',
   },
   closeButtonContainer: {
     position: 'absolute',
@@ -529,13 +511,14 @@ const styles = StyleSheet.create({
   },
   pageMessage: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#374151',
+    fontWeight: '300',
+    color: '#000000',
     textAlign: 'center',
     marginBottom: 16,
+    fontFamily: 'System',
   },
   pageMessageDark: {
-    color: '#e5e7eb',
+    color: '#ffffff',
   },
   pageNote: {
     fontSize: 16,
@@ -543,109 +526,113 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 24,
+    fontFamily: 'System',
   },
   pageNoteDark: {
     color: '#9ca3af',
   },
   pageCounter: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#2563eb',
+    fontWeight: '400',
+    color: '#000000',
+    fontFamily: 'System',
   },
   pageCounterDark: {
-    color: '#60a5fa',
+    color: '#ffffff',
   },
-  sectionCounter: {
+  sectionCounterContainer: {
     position: 'absolute',
-    bottom: 80,
+    bottom: 0,
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 1000,
   },
+  sectionCounter: {
+    paddingBottom: 5,
+  },
   sectionText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '400',
     color: '#6b7280',
+    fontFamily: 'System',
   },
   sectionTextDark: {
-    color: '#94a3b8',
+    color: '#9ca3af',
   },
   sectionCarouselContainer: {
     position: 'absolute',
-    bottom: screenHeight * 0.25,
+    bottom: 50,
     left: 0,
     right: 0,
-    height: 180,
+    height: 200,
     zIndex: 999,
   },
-  carouselGradient: {
+  carouselBackground: {
     flex: 1,
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    marginHorizontal: 20,
+    borderRadius: 16,
     paddingVertical: 16,
+    paddingHorizontal: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  carouselHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  carouselTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  carouselTitleDark: {
-    color: '#f1f5f9',
-  },
-  carouselClose: {
-    padding: 4,
+  carouselBackgroundDark: {
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
   },
   carouselContent: {
     paddingHorizontal: 8,
   },
-  sectionItem: {
-    width: 180,
+  pageItem: {
+    width: 110,
+    height: 160,
     marginRight: 12,
     padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
+    borderColor: '#e5e5e5',
+    justifyContent: 'space-between',
   },
-  sectionItemDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+  pageItemDark: {
+    backgroundColor: '#1a1a1a',
+    borderColor: '#333333',
   },
-  sectionItemActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
+  pageItemActive: {
+    backgroundColor: '#000000',
+    borderColor: '#000000',
   },
-  sectionItemActiveDark: {
-    backgroundColor: '#1e40af',
-    borderColor: '#1e40af',
+  pageItemActiveDark: {
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
   },
-  sectionNumber: {
+  pageNumber: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#2563eb',
-    marginBottom: 8,
+    fontWeight: '600',
+    color: '#000000',
+    textAlign: 'center',
+    fontFamily: 'System',
   },
-  sectionNumberDark: {
-    color: '#60a5fa',
-  },
-  sectionNumberActive: {
+  pageNumberDark: {
     color: '#ffffff',
   },
-  sectionPreview: {
-    fontSize: 12,
+  pageNumberActive: {
+    color: '#ffffff',
+  },
+  pagePreview: {
+    fontSize: 11,
     color: '#6b7280',
-    lineHeight: 16,
+    lineHeight: 14,
+    fontFamily: 'System',
   },
-  sectionPreviewDark: {
-    color: '#94a3b8',
+  pagePreviewDark: {
+    color: '#9ca3af',
   },
-  sectionPreviewActive: {
+  pagePreviewActive: {
     color: 'rgba(255, 255, 255, 0.9)',
   },
 });

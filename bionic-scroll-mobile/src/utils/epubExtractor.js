@@ -18,10 +18,8 @@ export class EPUBExtractor {
         throw new Error('Invalid EPUB structure: No readable content found');
       }
       
-      // Extract cover image
       const coverImage = await this.extractCoverImage(contents, manifest, basePath);
       
-      // Extract text from spine files in order
       const extractedTexts = [];
       const originalPages = [];
       
@@ -36,7 +34,6 @@ export class EPUBExtractor {
               const content = await contentFile.async('text');
               const extractedText = this.extractTextFromHTML(content);
               
-              // Keep original HTML for reader mode
               originalPages.push({
                 id: originalPages.length,
                 content: content,
@@ -107,11 +104,11 @@ export class EPUBExtractor {
   
   async extractCoverImage(zipContents, manifest, basePath) {
     try {
-      // Look for cover image in manifest
       const coverItem = Object.values(manifest).find(item => 
         item.href && (
           item.href.toLowerCase().includes('cover') ||
-          item.href.toLowerCase().includes('title')
+          item.href.toLowerCase().includes('title') ||
+          item.properties === 'cover-image'
         ) && (
           item.mediaType.startsWith('image/') || 
           item.href.match(/\.(jpg|jpeg|png|gif|webp)$/i)
@@ -128,20 +125,23 @@ export class EPUBExtractor {
         }
       }
       
-      // Fallback: look for any image in common cover locations
       const commonCoverPaths = [
         'OEBPS/Images/cover.jpg',
         'OEBPS/images/cover.jpg',
+        'OEBPS/Images/cover.png',
+        'OEBPS/images/cover.png',
         'OPS/images/cover.jpg',
         'images/cover.jpg',
-        'cover.jpg'
+        'cover.jpg',
+        'cover.png'
       ];
       
       for (const path of commonCoverPaths) {
         const imageFile = zipContents.file(path);
         if (imageFile) {
           const imageData = await imageFile.async('base64');
-          return `data:image/jpeg;base64,${imageData}`;
+          const extension = path.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+          return `data:image/${extension};base64,${imageData}`;
         }
       }
       
@@ -209,7 +209,8 @@ export class EPUBExtractor {
         if (attributes.id && attributes.href && attributes['media-type']) {
           manifest[attributes.id] = {
             href: attributes.href,
-            mediaType: attributes['media-type']
+            mediaType: attributes['media-type'],
+            properties: attributes.properties || null
           };
         }
       }
@@ -257,53 +258,60 @@ export class EPUBExtractor {
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
       
-      const contentTags = ['p', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'];
-      let extractedText = '';
+      const structuralTags = ['div', 'section', 'article', 'main', 'aside'];
+      let processedContent = text;
       
-      contentTags.forEach(tag => {
+      structuralTags.forEach(tag => {
         const tagPattern = new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`, 'gi');
-        let match;
-        
-        while ((match = tagPattern.exec(text)) !== null) {
-          const content = match[1]
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#(\d+);/g, (match, dec) => {
-              try {
-                return String.fromCharCode(dec);
-              } catch (e) {
-                return ' ';
-              }
-            })
-            .replace(/&[^;]+;/g, ' ')
-            .trim();
-          
-          if (content && content.length > 10) {
-            extractedText += content + '\n\n';
-          }
-        }
+        processedContent = processedContent.replace(tagPattern, (match, content) => {
+          return this.preserveStructure(content);
+        });
       });
       
+      let extractedText = '';
+      
+      const headingPattern = /<(h[1-6])[^>]*>([\s\S]*?)<\/h[1-6]>/gi;
+      let match;
+      while ((match = headingPattern.exec(processedContent)) !== null) {
+        const headingText = this.cleanTextContent(match[2]);
+        if (headingText.trim()) {
+          extractedText += '\n\n' + headingText.trim() + '\n\n';
+        }
+      }
+      
+      const paragraphPattern = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+      while ((match = paragraphPattern.exec(processedContent)) !== null) {
+        const paragraphText = this.cleanTextContent(match[1]);
+        if (paragraphText.trim() && paragraphText.length > 10) {
+          extractedText += paragraphText.trim() + '\n\n';
+        }
+      }
+      
+      const listPattern = /<(ul|ol)[^>]*>([\s\S]*?)<\/(ul|ol)>/gi;
+      while ((match = listPattern.exec(processedContent)) !== null) {
+        const listItems = match[2].match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
+        listItems.forEach(item => {
+          const itemText = this.cleanTextContent(item.replace(/<\/?li[^>]*>/gi, ''));
+          if (itemText.trim()) {
+            extractedText += '• ' + itemText.trim() + '\n';
+          }
+        });
+        extractedText += '\n';
+      }
+      
+      const blockquotePattern = /<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi;
+      while ((match = blockquotePattern.exec(processedContent)) !== null) {
+        const quoteText = this.cleanTextContent(match[1]);
+        if (quoteText.trim()) {
+          extractedText += '\n"' + quoteText.trim() + '"\n\n';
+        }
+      }
+      
       if (!extractedText.trim()) {
-        extractedText = text
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#(\d+);/g, (match, dec) => {
-            try {
-              return String.fromCharCode(dec);
-            } catch (e) {
-              return ' ';
-            }
-          })
-          .replace(/&[^;]+;/g, ' ');
+        const bodyMatch = processedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        const contentToProcess = bodyMatch ? bodyMatch[1] : processedContent;
+        
+        extractedText = this.cleanTextContent(contentToProcess);
       }
       
       return extractedText;
@@ -311,6 +319,37 @@ export class EPUBExtractor {
       console.error('Error extracting text from HTML:', error);
       return '';
     }
+  }
+  
+  preserveStructure(content) {
+    return content
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(div|section|article)[^>]*>/gi, '\n')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n');
+  }
+  
+  cleanTextContent(text) {
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
+
+    return text
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#(\d+);/g, (match, dec) => {
+        try {
+          return String.fromCharCode(dec);
+        } catch (e) {
+          return ' ';
+        }
+      })
+      .replace(/&[^;]+;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
   
   cleanupText(text) {

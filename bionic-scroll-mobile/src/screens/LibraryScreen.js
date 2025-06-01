@@ -12,7 +12,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { StorageManager } from '../utils/storageManager';
 import { SettingsManager } from '../utils/settingsManager';
@@ -75,7 +74,7 @@ const LibraryScreen = ({ navigation }) => {
 
   const handleBookPress = async (book) => {
     if (uploadingBooks.has(book.id)) {
-      return; // Prevent opening while uploading
+      return;
     }
 
     try {
@@ -145,31 +144,6 @@ const LibraryScreen = ({ navigation }) => {
     const tempId = Date.now().toString();
     
     try {
-      // Create temporary book entry for upload progress
-      const tempBook = {
-        id: tempId,
-        name: file.name,
-        type: file.mimeType,
-        isUploading: true,
-        dateAdded: new Date().toISOString(),
-        coverImage: null,
-        readingPosition: { percentage: 0 }
-      };
-
-      setBooks(prev => [tempBook, ...prev]);
-      setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
-
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadingBooks(prev => {
-          const current = prev.get(tempId) || 0;
-          const next = Math.min(current + Math.random() * 20, 90);
-          const newMap = new Map(prev);
-          newMap.set(tempId, next);
-          return newMap;
-        });
-      }, 300);
-
       let extractionResult;
       
       if (file.mimeType === 'application/pdf') {
@@ -180,8 +154,33 @@ const LibraryScreen = ({ navigation }) => {
         throw new Error('Unsupported file type');
       }
 
-      clearInterval(progressInterval);
-      updateUploadProgress(tempId, 100);
+      const tempBook = {
+        id: tempId,
+        name: file.name,
+        type: file.mimeType,
+        isUploading: true,
+        dateAdded: new Date().toISOString(),
+        coverImage: extractionResult.coverImage,
+        readingPosition: { percentage: 0 }
+      };
+
+      setBooks(prev => [tempBook, ...prev]);
+      setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
+
+      const progressInterval = setInterval(() => {
+        setUploadingBooks(prev => {
+          const current = prev.get(tempId) || 0;
+          const next = Math.min(current + Math.random() * 15 + 5, 95);
+          const newMap = new Map(prev);
+          newMap.set(tempId, next);
+          return newMap;
+        });
+      }, 200);
+
+      setTimeout(() => {
+        clearInterval(progressInterval);
+        updateUploadProgress(tempId, 100);
+      }, 2000);
 
       const wordCount = extractionResult.text 
         ? extractionResult.text.split(/\s+/).length 
@@ -203,7 +202,6 @@ const LibraryScreen = ({ navigation }) => {
         extractionResult
       );
 
-      // Remove temp book and reload library
       setTimeout(() => {
         setBooks(prev => prev.filter(book => book.id !== tempId));
         loadBooks();
@@ -212,7 +210,6 @@ const LibraryScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Error processing file:', error);
       
-      // Remove temp book on error
       setBooks(prev => prev.filter(book => book.id !== tempId));
       setUploadingBooks(prev => {
         const newMap = new Map(prev);
@@ -226,32 +223,12 @@ const LibraryScreen = ({ navigation }) => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <LinearGradient
-        colors={settings.isDarkMode ? ['#1e293b', '#0f172a'] : ['#f8fafc', '#e2e8f0']}
-        style={styles.emptyGradient}
-      >
-        <View style={styles.emptyContent}>
-          <View style={[styles.emptyIcon, settings.isDarkMode && styles.emptyIconDark]}>
-            <Ionicons 
-              name="book" 
-              size={32} 
-              color={settings.isDarkMode ? '#60a5fa' : '#2563eb'} 
-            />
-          </View>
-          <Text style={[
-            styles.emptyTitle, 
-            settings.isDarkMode && styles.emptyTitleDark
-          ]}>
-            Start Your Reading Journey
-          </Text>
-          <Text style={[
-            styles.emptySubtitle,
-            settings.isDarkMode && styles.emptySubtitleDark
-          ]}>
-            Upload your first book to begin reading with our enhanced experience
-          </Text>
-        </View>
-      </LinearGradient>
+      <Text style={[
+        styles.emptyMessage, 
+        settings.isDarkMode && styles.emptyMessageDark
+      ]}>
+        Upload your first book to begin
+      </Text>
     </View>
   );
 
@@ -279,23 +256,20 @@ const LibraryScreen = ({ navigation }) => {
               {getGreeting()}
             </Text>
             <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
-              {books.length > 0 ? `${books.length} Books` : 'Library'}
+              {books.length > 0 ? `${books.length} ${books.length === 1 ? 'Book' : 'Books'}` : 'Your Books'}
             </Text>
           </View>
           
           <TouchableOpacity
-            style={[styles.addButton, settings.isDarkMode && styles.addButtonDark]}
+            style={styles.addButton}
             onPress={handleUploadPress}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <LinearGradient
-              colors={settings.isDarkMode ? ['#1d4ed8', '#2563eb'] : ['#2563eb', '#1d4ed8']}
-              style={styles.addButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="add" size={20} color="#ffffff" />
-            </LinearGradient>
+            <Ionicons 
+              name="add" 
+              size={24} 
+              color={settings.isDarkMode ? '#ffffff' : '#000000'} 
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -316,7 +290,7 @@ const LibraryScreen = ({ navigation }) => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator 
             size="large" 
-            color={settings.isDarkMode ? '#60a5fa'  : '#2563eb'} 
+            color={settings.isDarkMode ? '#ffffff' : '#000000'} 
           />
         </View>
       )}
@@ -330,7 +304,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   containerDark: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#000000',
   },
   header: {
     paddingHorizontal: 24,
@@ -347,84 +321,45 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 15,
-    fontWeight: '500',
-    color: '#64748b',
+    fontWeight: '400',
+    color: '#6b7280',
     marginBottom: 4,
+    fontFamily: 'System',
   },
   greetingDark: {
-    color: '#94a3b8',
+    color: '#9ca3af',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1f2937',
-    letterSpacing: -0.3,
+    fontSize: 32,
+    fontWeight: '300',
+    color: '#000000',
+    letterSpacing: -0.5,
+    fontFamily: 'System',
   },
   titleDark: {
-    color: '#f8fafc',
+    color: '#ffffff',
   },
   addButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  addButtonDark: {
-    shadowColor: '#1d4ed8',
-  },
-  addButtonGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyState: {
     flex: 1,
-  },
-  emptyGradient: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  emptyContent: {
-    alignItems: 'center',
     paddingHorizontal: 40,
   },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(37, 99, 235, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  emptyIconDark: {
-    backgroundColor: 'rgba(96, 165, 250, 0.1)',
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 12,
+  emptyMessage: {
+    fontSize: 18,
+    fontWeight: '300',
+    color: '#6b7280',
     textAlign: 'center',
+    fontFamily: 'System',
   },
-  emptyTitleDark: {
-    color: '#f1f5f9',
-  },
-  emptySubtitle: {
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  emptySubtitleDark: {
-    color: '#94a3b8',
+  emptyMessageDark: {
+    color: '#9ca3af',
   },
   loadingContainer: {
     flex: 1,
