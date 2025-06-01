@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { SettingsManager } from '../utils/settingsManager';
 import { StorageManager } from '../utils/storageManager';
@@ -20,14 +21,17 @@ const ProfileScreen = ({ navigation }) => {
     isDarkMode: false,
     fontSize: 22,
     bionicMode: false,
+    useOriginalReader: false,
   });
 
   const settingsManager = new SettingsManager();
   const storageManager = new StorageManager();
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSettings();
+    }, [])
+  );
 
   const loadSettings = async () => {
     const userSettings = await settingsManager.getSettings();
@@ -155,6 +159,18 @@ const ProfileScreen = ({ navigation }) => {
             <Switch
               value={settings.bionicMode}
               onValueChange={(value) => updateSetting('bionicMode', value)}
+              trackColor={{ false: '#d1d5db', true: '#2563eb' }}
+              thumbColor='#ffffff'
+              ios_backgroundColor="#d1d5db"
+            />
+          )}
+
+          {renderSettingRow(
+            'reader',
+            'Original Format Reader',
+            <Switch
+              value={settings.useOriginalReader}
+              onValueChange={(value) => updateSetting('useOriginalReader', value)}
               trackColor={{ false: '#d1d5db', true: '#2563eb' }}
               thumbColor='#ffffff'
               ios_backgroundColor="#d1d5db"

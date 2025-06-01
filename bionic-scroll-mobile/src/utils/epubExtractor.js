@@ -6,22 +6,24 @@ export class EPUBExtractor {
     try {
       console.log('Starting EPUB text extraction...');
       
-      // Read the EPUB file (which is a ZIP archive)
       const fileContent = await fetch(fileUri);
       const arrayBuffer = await fileContent.arrayBuffer();
       
       const zip = new JSZip();
       const contents = await zip.loadAsync(arrayBuffer);
       
-      // Parse the EPUB structure
       const { spine, manifest, basePath } = await this.parseEPUBStructure(contents);
       
       if (!spine || spine.length === 0) {
         throw new Error('Invalid EPUB structure: No readable content found');
       }
       
+      // Extract cover image
+      const coverImage = await this.extractCoverImage(contents, manifest, basePath);
+      
       // Extract text from spine files in order
       const extractedTexts = [];
+      const originalPages = [];
       
       for (const itemRef of spine) {
         try {
@@ -33,6 +35,14 @@ export class EPUBExtractor {
             if (contentFile) {
               const content = await contentFile.async('text');
               const extractedText = this.extractTextFromHTML(content);
+              
+              // Keep original HTML for reader mode
+              originalPages.push({
+                id: originalPages.length,
+                content: content,
+                type: 'html'
+              });
+              
               if (extractedText.trim().length > 50) {
                 extractedTexts.push(extractedText);
               }
@@ -49,7 +59,9 @@ export class EPUBExtractor {
           text: null,
           extractionFailed: true,
           message: 'No readable text content found in EPUB file.',
-          originalFormat: true
+          originalFormat: true,
+          originalPages,
+          coverImage
         };
       }
       
@@ -62,13 +74,17 @@ export class EPUBExtractor {
           text: null,
           extractionFailed: true,
           message: 'Insufficient text content extracted from EPUB.',
-          originalFormat: true
+          originalFormat: true,
+          originalPages,
+          coverImage
         };
       }
       
       return {
         text: cleanedText,
         extractionFailed: false,
+        originalPages,
+        coverImage,
         metadata: {
           chapters: extractedTexts.length,
           wordCount,
@@ -89,9 +105,55 @@ export class EPUBExtractor {
     }
   }
   
+  async extractCoverImage(zipContents, manifest, basePath) {
+    try {
+      // Look for cover image in manifest
+      const coverItem = Object.values(manifest).find(item => 
+        item.href && (
+          item.href.toLowerCase().includes('cover') ||
+          item.href.toLowerCase().includes('title')
+        ) && (
+          item.mediaType.startsWith('image/') || 
+          item.href.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+        )
+      );
+      
+      if (coverItem) {
+        const imagePath = basePath ? `${basePath}/${coverItem.href}` : coverItem.href;
+        const imageFile = zipContents.file(imagePath);
+        
+        if (imageFile) {
+          const imageData = await imageFile.async('base64');
+          return `data:${coverItem.mediaType};base64,${imageData}`;
+        }
+      }
+      
+      // Fallback: look for any image in common cover locations
+      const commonCoverPaths = [
+        'OEBPS/Images/cover.jpg',
+        'OEBPS/images/cover.jpg',
+        'OPS/images/cover.jpg',
+        'images/cover.jpg',
+        'cover.jpg'
+      ];
+      
+      for (const path of commonCoverPaths) {
+        const imageFile = zipContents.file(path);
+        if (imageFile) {
+          const imageData = await imageFile.async('base64');
+          return `data:image/jpeg;base64,${imageData}`;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Could not extract cover image:', error);
+      return null;
+    }
+  }
+  
   async parseEPUBStructure(zipContents) {
     try {
-      // Step 1: Parse container.xml to find content.opf location
       const containerFile = zipContents.file('META-INF/container.xml');
       if (!containerFile) {
         throw new Error('Missing META-INF/container.xml');
@@ -104,7 +166,6 @@ export class EPUBExtractor {
         throw new Error('Could not find content.opf path');
       }
       
-      // Step 2: Parse content.opf to get spine and manifest
       const contentOpfFile = zipContents.file(contentOpfPath);
       if (!contentOpfFile) {
         throw new Error('Missing content.opf file');
@@ -113,7 +174,6 @@ export class EPUBExtractor {
       const contentOpfXML = await contentOpfFile.async('text');
       const { spine, manifest } = this.parseContentOpf(contentOpfXML);
       
-      // Determine base path for content files
       const basePath = contentOpfPath.includes('/') 
         ? contentOpfPath.substring(0, contentOpfPath.lastIndexOf('/'))
         : '';
@@ -128,7 +188,6 @@ export class EPUBExtractor {
   
   extractContentOpfPath(containerXML) {
     try {
-      // Simple XML parsing for container.xml
       const fullPathMatch = containerXML.match(/full-path\s*=\s*["']([^"']+)["']/);
       return fullPathMatch ? fullPathMatch[1] : null;
     } catch (error) {
@@ -142,7 +201,6 @@ export class EPUBExtractor {
       const manifest = {};
       const spine = [];
       
-      // Extract manifest items
       const manifestPattern = /<item\s+([^>]+)>/g;
       let match;
       
@@ -156,7 +214,6 @@ export class EPUBExtractor {
         }
       }
       
-      // Extract spine items
       const spinePattern = /<itemref\s+([^>]+)>/g;
       while ((match = spinePattern.exec(contentOpfXML)) !== null) {
         const attributes = this.parseAttributes(match[1]);
@@ -196,12 +253,10 @@ export class EPUBExtractor {
   
   extractTextFromHTML(htmlContent) {
     try {
-      // Remove script and style tags
       let text = htmlContent
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
       
-      // Extract text from common content tags
       const contentTags = ['p', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'];
       let extractedText = '';
       
@@ -211,7 +266,7 @@ export class EPUBExtractor {
         
         while ((match = tagPattern.exec(text)) !== null) {
           const content = match[1]
-            .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+            .replace(/<[^>]+>/g, ' ')
             .replace(/&nbsp;/g, ' ')
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
@@ -233,7 +288,6 @@ export class EPUBExtractor {
         }
       });
       
-      // Fallback: if no content tags found, remove all HTML
       if (!extractedText.trim()) {
         extractedText = text
           .replace(/<[^>]+>/g, ' ')

@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
+import { WebView } from 'react-native-webview';
 
 import TextRenderer from '../components/TextRenderer';
 import { TextProcessor } from '../utils/textProcessor';
@@ -31,10 +32,12 @@ const ReadingScreen = ({ navigation, route }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showUI, setShowUI] = useState(true);
   const [isPageMode, setIsPageMode] = useState(false);
+  const [isOriginalReader, setIsOriginalReader] = useState(false);
   const [settings, setSettings] = useState({
     isDarkMode: false,
     fontSize: 22,
     bionicMode: false,
+    useOriginalReader: false,
   });
 
   const textProcessor = useRef(new TextProcessor()).current;
@@ -48,7 +51,6 @@ const ReadingScreen = ({ navigation, route }) => {
     React.useCallback(() => {
       loadSettings();
       
-      // Hide tab bar when entering reading screen
       const parent = navigation.getParent();
       if (parent) {
         parent.setOptions({
@@ -57,7 +59,6 @@ const ReadingScreen = ({ navigation, route }) => {
       }
 
       return () => {
-        // Show tab bar when leaving reading screen
         const parent = navigation.getParent();
         if (parent) {
           parent.setOptions({
@@ -72,13 +73,21 @@ const ReadingScreen = ({ navigation, route }) => {
     const userSettings = await settingsManager.getSettings();
     setSettings(userSettings);
     
-    if (sections.length > 0 && !isPageMode) {
+    // Determine reading mode
+    const useOriginal = userSettings.useOriginalReader || bookData.extractionFailed;
+    setIsOriginalReader(useOriginal);
+    
+    if (useOriginal && bookData.originalPages) {
+      setSections(bookData.originalPages);
+      setIsPageMode(true);
+    } else if (sections.length > 0 && !useOriginal) {
       textProcessor.setFontSize(userSettings.fontSize || 22);
       const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
       const processedSections = rawSections.map(section => 
         textProcessor.processSection(section, userSettings.bionicMode || false)
       );
       setSections(processedSections);
+      setIsPageMode(false);
     }
   };
 
@@ -101,12 +110,15 @@ const ReadingScreen = ({ navigation, route }) => {
     const userSettings = await settingsManager.getSettings();
     setSettings(userSettings);
 
-    if (bookData.extractionFailed) {
+    const useOriginal = userSettings.useOriginalReader || bookData.extractionFailed;
+    setIsOriginalReader(useOriginal);
+
+    if (useOriginal) {
       setIsPageMode(true);
-      if (bookData.pages) {
-        setSections(bookData.pages);
+      if (bookData.originalPages && bookData.originalPages.length > 0) {
+        setSections(bookData.originalPages);
       } else {
-        Alert.alert('Error', 'Unable to display this book');
+        Alert.alert('Error', 'Unable to display this book in original format');
         navigation.goBack();
       }
       return;
@@ -214,6 +226,63 @@ const ReadingScreen = ({ navigation, route }) => {
     navigation.goBack();
   };
 
+  const renderOriginalContent = (section) => {
+    if (section.type === 'html') {
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              line-height: 1.6;
+              margin: 0;
+              padding: 20px;
+              background-color: ${settings.isDarkMode ? '#0f172a' : '#ffffff'};
+              color: ${settings.isDarkMode ? '#f3f4f6' : '#111827'};
+              font-size: ${settings.fontSize}px;
+            }
+            img { max-width: 100%; height: auto; }
+            a { color: ${settings.isDarkMode ? '#60a5fa' : '#2563eb'}; }
+          </style>
+        </head>
+        <body>
+          ${section.content}
+        </body>
+        </html>
+      `;
+
+      return (
+        <WebView
+          source={{ html: htmlContent }}
+          style={styles.originalWebView}
+          startInLoadingState={true}
+          scalesPageToFit={false}
+        />
+      );
+    } else if (section.type === 'pdf') {
+      return (
+        <View style={styles.pageContainer}>
+          <Text style={[
+            styles.pageMessage, 
+            settings.isDarkMode && styles.pageMessageDark
+          ]}>
+            PDF Viewer
+          </Text>
+          <Text style={[
+            styles.pageNote,
+            settings.isDarkMode && styles.pageNoteDark
+          ]}>
+            PDF viewing in original format coming soon! For now, you can view the document page by page.
+          </Text>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
   const currentSection = sections[currentSectionIndex];
   const progress = sections.length > 0 ? ((currentSectionIndex + 1) / sections.length) * 100 : 0;
 
@@ -254,15 +323,15 @@ const ReadingScreen = ({ navigation, route }) => {
                 { transform: [{ translateY }] }
               ]}
             >
-              {currentSection && !isPageMode && (
+              {currentSection && isOriginalReader ? (
+                renderOriginalContent(currentSection)
+              ) : currentSection && !isPageMode ? (
                 <TextRenderer
                   section={currentSection}
                   settings={settings}
                   isDarkMode={settings.isDarkMode}
                 />
-              )}
-              
-              {isPageMode && currentSection && (
+              ) : currentSection ? (
                 <View style={styles.pageContainer}>
                   <Text style={[
                     styles.pageMessage, 
@@ -274,7 +343,7 @@ const ReadingScreen = ({ navigation, route }) => {
                     styles.pageNote,
                     settings.isDarkMode && styles.pageNoteDark
                   ]}>
-                    This document is displayed in its original format as text extraction was not possible.
+                    This document is displayed in its original format.
                   </Text>
                   <Text style={[
                     styles.pageCounter,
@@ -283,7 +352,7 @@ const ReadingScreen = ({ navigation, route }) => {
                     Page {currentSectionIndex + 1} of {sections.length}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </Animated.View>
           </PanGestureHandler>
         </View>
@@ -352,6 +421,10 @@ const styles = StyleSheet.create({
     paddingTop: 80,
     paddingBottom: 120,
     paddingHorizontal: 28,
+  },
+  originalWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   pageContainer: {
     flex: 1,

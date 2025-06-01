@@ -1,22 +1,42 @@
 // src/components/FloatingTabBar.js
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SettingsManager } from '../utils/settingsManager';
 
 const { width } = Dimensions.get('window');
 
-const FloatingTabBar = ({ state, descriptors, navigation, isDarkMode }) => {
+const FloatingTabBar = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const settingsManager = new SettingsManager();
+
+  useEffect(() => {
+    loadTheme();
+    
+    // Listen for focus events to update theme
+    const unsubscribe = navigation.addListener('state', () => {
+      loadTheme();
+    });
+    
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadTheme = async () => {
+    const settings = await settingsManager.getSettings();
+    setIsDarkMode(settings.isDarkMode);
+  };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + 15 }]}>
-      <View style={[
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 15) }]}>
+      <Animated.View style={[
         styles.tabContainer,
         isDarkMode && styles.tabContainerDark
       ]}>
@@ -72,7 +92,7 @@ const FloatingTabBar = ({ state, descriptors, navigation, isDarkMode }) => {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </Animated.View>
     </View>
   );
 };

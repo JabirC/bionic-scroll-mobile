@@ -8,6 +8,7 @@ export class SettingsManager {
       isDarkMode: false,
       fontSize: 22,
       bionicMode: false,
+      useOriginalReader: false,
     };
   }
 

@@ -27,10 +27,10 @@ export class StorageManager {
       const fileName = `${bookId}.json`;
       const filePath = this.booksDirectory + fileName;
       
-      // Save book data including text or pages
       const bookContent = {
         text: extractionResult.text,
         pages: extractionResult.pages,
+        originalPages: extractionResult.originalPages,
         extractionFailed: extractionResult.extractionFailed,
         message: extractionResult.message,
         originalFileUri: fileUri
@@ -40,12 +40,12 @@ export class StorageManager {
         encoding: FileSystem.EncodingType.UTF8
       });
       
-      // Save book metadata
       const bookData = {
         id: bookId,
         name: fileInfo.name,
         size: fileInfo.size,
         type: fileInfo.type,
+        coverImage: extractionResult.coverImage,
         dateAdded: new Date().toISOString(),
         lastRead: null,
         filePath,

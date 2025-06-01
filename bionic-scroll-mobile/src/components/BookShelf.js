@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -91,26 +92,41 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
           onLongPress={() => setSelectedBook(isSelected ? null : book.id)}
           activeOpacity={0.8}
         >
-          <LinearGradient
-            colors={coverColors}
-            style={styles.bookCover}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.bookContent}>
-              <Text style={styles.bookTitle} numberOfLines={3} ellipsizeMode="tail">
-                {cleanTitle}
-              </Text>
-              
-              <View style={styles.fileTypeIndicator}>
+          {book.coverImage ? (
+            <View style={styles.bookCover}>
+              <Image 
+                source={{ uri: book.coverImage }}
+                style={styles.coverImage}
+                resizeMode="cover"
+              />
+              <View style={styles.fileTypeOverlay}>
                 <Text style={styles.fileType}>
                   {book.type === 'application/pdf' ? 'PDF' : 'EPUB'}
                 </Text>
               </View>
             </View>
-            
-            <View style={[styles.bookSpine, isDarkMode && styles.bookSpineDark]} />
-          </LinearGradient>
+          ) : (
+            <LinearGradient
+              colors={coverColors}
+              style={styles.bookCover}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.bookContent}>
+                <Text style={styles.bookTitle} numberOfLines={3} ellipsizeMode="tail">
+                  {cleanTitle}
+                </Text>
+                
+                <View style={styles.fileTypeIndicator}>
+                  <Text style={styles.fileType}>
+                    {book.type === 'application/pdf' ? 'PDF' : 'EPUB'}
+                  </Text>
+                </View>
+              </View>
+            </LinearGradient>
+          )}
+          
+          <View style={[styles.bookSpine, isDarkMode && styles.bookSpineDark]} />
           
           {isSelected && (
             <TouchableOpacity
@@ -222,6 +238,19 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 8,
     overflow: 'hidden',
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  fileTypeOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   bookContent: {
     flex: 1,
