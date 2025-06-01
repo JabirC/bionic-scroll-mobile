@@ -42,6 +42,15 @@ const LibraryScreen = ({ navigation }) => {
     }, [])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      const unsubscribe = navigation.addListener('focus', () => {
+        loadSettings();
+      });
+      return unsubscribe;
+    }, [navigation])
+  );
+
   const loadBooks = async () => {
     setIsLoading(true);
     try {
@@ -56,7 +65,12 @@ const LibraryScreen = ({ navigation }) => {
 
   const loadSettings = async () => {
     const userSettings = await settingsManager.getSettings();
-    setSettings(userSettings);
+    setSettings(prev => {
+      if (JSON.stringify(prev) !== JSON.stringify(userSettings)) {
+        return userSettings;
+      }
+      return prev;
+    });
   };
 
   const handleBookPress = async (book) => {
@@ -64,8 +78,7 @@ const LibraryScreen = ({ navigation }) => {
       const bookData = await storageManager.getBookContent(book.id);
       navigation.navigate('Reading', { 
         book, 
-        bookData,
-        settings 
+        bookData
       });
     } catch (error) {
       Alert.alert('Error', 'Could not open book');

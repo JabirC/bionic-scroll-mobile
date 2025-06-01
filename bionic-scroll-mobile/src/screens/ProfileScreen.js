@@ -32,38 +32,12 @@ const ProfileScreen = ({ navigation }) => {
   const loadSettings = async () => {
     const userSettings = await settingsManager.getSettings();
     setSettings(userSettings);
-    
-    // Update navigation theme immediately
-    navigation.getParent()?.setOptions({
-      tabBarStyle: {
-        backgroundColor: userSettings.isDarkMode ? '#1e293b' : '#ffffff',
-        borderTopColor: userSettings.isDarkMode ? '#334155' : '#e5e7eb',
-        borderTopWidth: 1,
-        height: 90,
-        paddingBottom: 30,
-        paddingTop: 10,
-      }
-    });
   };
 
   const updateSetting = async (key, value) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     await settingsManager.saveSetting(key, value);
-    
-    // Update navigation theme when dark mode changes
-    if (key === 'isDarkMode') {
-      navigation.getParent()?.setOptions({
-        tabBarStyle: {
-          backgroundColor: value ? '#1e293b' : '#ffffff',
-          borderTopColor: value ? '#334155' : '#e5e7eb',
-          borderTopWidth: 1,
-          height: 90,
-          paddingBottom: 30,
-          paddingTop: 10,
-        }
-      });
-    }
   };
 
   const handleClearLibrary = () => {
@@ -89,10 +63,9 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const fontSizes = [
-    { label: 'Small', value: 18 },
-    { label: 'Medium', value: 22 },
-    { label: 'Large', value: 26 },
-    { label: 'Extra Large', value: 30 },
+    { label: 'S', value: 18, size: 16 },
+    { label: 'M', value: 22, size: 20 },
+    { label: 'L', value: 26, size: 24 },
   ];
 
   const renderSettingRow = (icon, title, content, onPress) => (
@@ -120,21 +93,45 @@ const ProfileScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+  const renderFontSizeSelector = () => (
+    <View style={styles.fontSizeContainer}>
+      {fontSizes.map(font => (
+        <TouchableOpacity 
+          key={font.value}
+          style={[
+            styles.fontSizeButton,
+            settings.isDarkMode && styles.fontSizeButtonDark,
+            settings.fontSize === font.value && styles.fontSizeButtonSelected,
+            settings.fontSize === font.value && settings.isDarkMode && styles.fontSizeButtonSelectedDark
+          ]}
+          onPress={() => updateSetting('fontSize', font.value)}
+          activeOpacity={0.7}
+        >
+          <Text style={[
+            styles.fontSizeLabel,
+            { fontSize: font.size },
+            settings.isDarkMode && styles.fontSizeLabelDark,
+            settings.fontSize === font.value && styles.fontSizeLabelSelected
+          ]}>
+            A
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   return (
     <SafeAreaView 
       style={[styles.container, settings.isDarkMode && styles.containerDark]}
       edges={['top']}
     >
-      {/* Header */}
       <View style={[styles.header, settings.isDarkMode && styles.headerDark]}>
         <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
           Settings
         </Text>
       </View>
 
-      {/* Content - Fixed height, no scroll */}
       <View style={styles.content}>
-        {/* Reading Preferences */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
             Reading Preferences
@@ -167,30 +164,10 @@ const ProfileScreen = ({ navigation }) => {
           {renderSettingRow(
             'text',
             'Font Size',
-            <View style={styles.fontSizeValue}>
-              <Text style={[styles.settingValue, settings.isDarkMode && styles.settingValueDark]}>
-                {fontSizes.find(f => f.value === settings.fontSize)?.label || 'Medium'}
-              </Text>
-              <Ionicons 
-                name="chevron-forward" 
-                size={16} 
-                color={settings.isDarkMode ? '#94a3b8' : '#6b7280'} 
-              />
-            </View>,
-            () => {
-              Alert.alert(
-                'Font Size',
-                'Choose your preferred font size',
-                fontSizes.map(font => ({
-                  text: font.label,
-                  onPress: () => updateSetting('fontSize', font.value),
-                }))
-              );
-            }
+            renderFontSizeSelector()
           )}
         </View>
 
-        {/* Library Management */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
             Library
@@ -208,7 +185,6 @@ const ProfileScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* App Info */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
             About
@@ -314,10 +290,6 @@ const styles = StyleSheet.create({
   settingRight: {
     alignItems: 'center',
   },
-  fontSizeValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   settingValue: {
     fontSize: 14,
     color: '#64748b',
@@ -326,6 +298,42 @@ const styles = StyleSheet.create({
   },
   settingValueDark: {
     color: '#94a3b8',
+  },
+  fontSizeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fontSizeButton: {
+    width: 40,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  fontSizeButtonDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4b5563',
+  },
+  fontSizeButtonSelected: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  fontSizeButtonSelectedDark: {
+    backgroundColor: '#1d4ed8',
+    borderColor: '#1d4ed8',
+  },
+  fontSizeLabel: {
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  fontSizeLabelDark: {
+    color: '#d1d5db',
+  },
+  fontSizeLabelSelected: {
+    color: '#ffffff',
   },
 });
 

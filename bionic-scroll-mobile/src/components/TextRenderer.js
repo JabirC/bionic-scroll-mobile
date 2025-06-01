@@ -1,6 +1,6 @@
 // src/components/TextRenderer.js
 import React from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const TextRenderer = ({ section, settings, isDarkMode }) => {
@@ -13,32 +13,44 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
       <style>
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
           font-size: ${fontSize}px;
-          line-height: 1.9;
+          line-height: 1.7;
           margin: 0;
-          padding: 0;
+          padding: 20px;
+          padding-bottom: 40px;
           background-color: ${isDarkMode ? '#0f172a' : '#ffffff'};
           color: ${isDarkMode ? '#f3f4f6' : '#111827'};
           overflow-x: hidden;
+          min-height: 100vh;
+          box-sizing: border-box;
+        }
+        
+        .content {
+          max-width: 600px;
+          width: 100%;
+          margin: 0 auto;
         }
         
         p {
           margin: 0 0 ${fontSize * 1.2}px 0;
           text-align: left;
+          font-weight: 400;
+          letter-spacing: 0.01em;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          hyphens: auto;
         }
         
         p:last-child {
           margin-bottom: 0;
         }
         
-        /* Bionic text styling */
         b {
           font-weight: 700;
           color: ${isDarkMode ? '#ffffff' : '#000000'};
         }
         
-        /* Prevent text selection and zoom */
         * {
           -webkit-touch-callout: none;
           -webkit-user-select: none;
@@ -57,7 +69,9 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
       </style>
     </head>
     <body>
-      ${section.processed}
+      <div class="content">
+        ${section.processed}
+      </div>
     </body>
     </html>
   `;

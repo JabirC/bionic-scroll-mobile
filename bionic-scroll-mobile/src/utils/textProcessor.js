@@ -4,7 +4,7 @@ import { Dimensions } from 'react-native';
 export class TextProcessor {
   constructor() {
     this.fontSize = 22;
-    this.lineHeight = 1.9;
+    this.lineHeight = 1.7;
     this.charWidth = 0.55;
     this.marginBottom = 24;
     
@@ -19,24 +19,24 @@ export class TextProcessor {
   }
 
   calculateSectionCapacity() {
-    const safeAreaTop = 120;
+    const safeAreaTop = 80;
     const safeAreaBottom = 120;
-    const horizontalPadding = 48;
+    const horizontalPadding = 56;
     const maxContentWidth = Math.min(this.screenWidth - horizontalPadding, 600);
     
     const availableHeight = this.screenHeight - safeAreaTop - safeAreaBottom;
     const availableWidth = maxContentWidth;
     
     const lineHeightPx = this.fontSize * this.lineHeight;
-    const maxLines = Math.floor(availableHeight / lineHeightPx) - 1;
+    const maxLines = Math.floor((availableHeight - 60) / lineHeightPx);
     const charsPerLine = Math.floor(availableWidth / (this.fontSize * this.charWidth));
     
     return {
-      maxLines: Math.max(3, maxLines),
+      maxLines: Math.max(4, maxLines),
       charsPerLine: Math.max(30, charsPerLine),
-      maxChars: Math.max(150, maxLines * charsPerLine * 0.75),
+      maxChars: Math.max(200, maxLines * charsPerLine * 0.7),
       lineHeightPx,
-      availableHeight: availableHeight - 40
+      availableHeight: availableHeight - 60
     };
   }
 
@@ -64,7 +64,7 @@ export class TextProcessor {
       totalHeight += paragraphHeight;
       
       if (index < paragraphs.length - 1) {
-        totalHeight += this.marginBottom;
+        totalHeight += this.fontSize * 1.2;
       }
     });
 
@@ -91,7 +91,7 @@ export class TextProcessor {
 
       const paragraphHeight = this.estimateTextHeight(paragraph);
       
-      if (paragraphHeight > availableHeight * 0.9) {
+      if (paragraphHeight > availableHeight * 0.85) {
         if (currentSection.trim()) {
           sections.push({
             content: currentSection.trim(),
@@ -105,7 +105,7 @@ export class TextProcessor {
           currentHeight = 0;
         }
 
-        const chunks = this.splitLongParagraph(paragraph, maxChars * 0.8);
+        const chunks = this.splitLongParagraph(paragraph, maxChars * 0.75);
         
         for (const chunk of chunks) {
           sections.push({
@@ -119,7 +119,9 @@ export class TextProcessor {
           currentCharIndex += chunk.length + 2;
         }
       } else {
-        if (currentHeight + paragraphHeight > availableHeight * 0.9 && currentSection.trim()) {
+        const newHeight = currentHeight + paragraphHeight + (currentSection ? this.fontSize * 1.2 : 0);
+        
+        if (newHeight > availableHeight * 0.85 && currentSection.trim()) {
           sections.push({
             content: currentSection.trim(),
             estimatedHeight: currentHeight,
@@ -137,7 +139,7 @@ export class TextProcessor {
           } else {
             currentSection = paragraph;
           }
-          currentHeight += paragraphHeight + (currentSection ? this.marginBottom : 0);
+          currentHeight = newHeight;
         }
         currentCharIndex += paragraph.length + 2;
       }

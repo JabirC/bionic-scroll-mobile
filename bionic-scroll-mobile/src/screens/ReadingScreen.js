@@ -14,61 +14,73 @@ import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
 
 import TextRenderer from '../components/TextRenderer';
 import { TextProcessor } from '../utils/textProcessor';
 import { StorageManager } from '../utils/storageManager';
+import { SettingsManager } from '../utils/settingsManager';
 
 const { height: screenHeight } = Dimensions.get('window');
 
 const ReadingScreen = ({ navigation, route }) => {
-  const { book, bookData, settings } = route.params;
+  const { book, bookData } = route.params;
   
   const [sections, setSections] = useState([]);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showUI, setShowUI] = useState(true);
   const [isPageMode, setIsPageMode] = useState(false);
+  const [settings, setSettings] = useState({
+    isDarkMode: false,
+    fontSize: 22,
+    bionicMode: false,
+  });
 
   const textProcessor = useRef(new TextProcessor()).current;
   const storageManager = useRef(new StorageManager()).current;
+  const settingsManager = useRef(new SettingsManager()).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const uiOpacity = useRef(new Animated.Value(1)).current;
   const lastScrollTime = useRef(Date.now());
 
-  // Hide navigation bar on screen focus
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      // Hide the tab bar when entering reading screen
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSettings();
+      
+      // Hide tab bar when entering reading screen
       const parent = navigation.getParent();
       if (parent) {
         parent.setOptions({
           tabBarStyle: { display: 'none' }
         });
       }
-    });
 
-    const unsubscribeBlur = navigation.addListener('blur', () => {
-      // Show the tab bar when leaving reading screen
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.setOptions({
-          tabBarStyle: {
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            alignItems: 'center',
-          }
-        });
-      }
-    });
+      return () => {
+        // Show tab bar when leaving reading screen
+        const parent = navigation.getParent();
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: undefined
+          });
+        }
+      };
+    }, [navigation])
+  );
 
-    return () => {
-      unsubscribe();
-      unsubscribeBlur();
-    };
-  }, [navigation]);
+  const loadSettings = async () => {
+    const userSettings = await settingsManager.getSettings();
+    setSettings(userSettings);
+    
+    if (sections.length > 0 && !isPageMode) {
+      textProcessor.setFontSize(userSettings.fontSize || 22);
+      const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
+      const processedSections = rawSections.map(section => 
+        textProcessor.processSection(section, userSettings.bionicMode || false)
+      );
+      setSections(processedSections);
+    }
+  };
 
   useEffect(() => {
     initializeSections();
@@ -85,9 +97,11 @@ const ReadingScreen = ({ navigation, route }) => {
     }
   }, [currentSectionIndex, sections.length]);
 
-  const initializeSections = () => {
+  const initializeSections = async () => {
+    const userSettings = await settingsManager.getSettings();
+    setSettings(userSettings);
+
     if (bookData.extractionFailed) {
-      // Handle page mode for failed extraction
       setIsPageMode(true);
       if (bookData.pages) {
         setSections(bookData.pages);
@@ -104,10 +118,10 @@ const ReadingScreen = ({ navigation, route }) => {
       return;
     }
 
-    textProcessor.setFontSize(settings.fontSize || 22);
+    textProcessor.setFontSize(userSettings.fontSize || 22);
     const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
     const processedSections = rawSections.map(section => 
-      textProcessor.processSection(section, settings.bionicMode || false)
+      textProcessor.processSection(section, userSettings.bionicMode || false)
     );
     
     setSections(processedSections);
@@ -121,7 +135,7 @@ const ReadingScreen = ({ navigation, route }) => {
     setShowUI(!showUI);
     Animated.timing(uiOpacity, {
       toValue: showUI ? 0 : 1,
-      duration: 300,
+      duration: 200,
       useNativeDriver: true,
     }).start();
   };
@@ -168,7 +182,7 @@ const ReadingScreen = ({ navigation, route }) => {
     Animated.spring(translateY, {
       toValue: 0,
       useNativeDriver: true,
-      tension: 100,
+      tension: 150,
       friction: 8,
     }).start();
   };
@@ -180,7 +194,7 @@ const ReadingScreen = ({ navigation, route }) => {
     
     Animated.timing(translateY, {
       toValue: slideDistance,
-      duration: 300,
+      duration: 200,
       useNativeDriver: true,
     }).start(() => {
       setCurrentSectionIndex(newIndex);
@@ -188,7 +202,7 @@ const ReadingScreen = ({ navigation, route }) => {
       
       Animated.timing(translateY, {
         toValue: 0,
-        duration: 300,
+        duration: 200,
         useNativeDriver: true,
       }).start(() => {
         setIsTransitioning(false);
@@ -207,27 +221,20 @@ const ReadingScreen = ({ navigation, route }) => {
     <View style={[styles.container, settings.isDarkMode && styles.containerDark]}>
       <StatusBar hidden />
       
-      {/* Progress Bar */}
-      <Animated.View 
-        style={[
-          styles.progressBar, 
-          settings.isDarkMode && styles.progressBarDark,
-          { opacity: uiOpacity }
-        ]}
-      >
+      <View style={[styles.progressBar, settings.isDarkMode && styles.progressBarDark]}>
         <View style={[styles.progressFill, { width: `${progress}%` }]} />
-      </Animated.View>
+      </View>
 
-      {/* Back Button */}
-      <SafeAreaView edges={['top']} style={styles.backButtonContainer}>
-        <Animated.View style={[styles.backButtonWrapper, { opacity: uiOpacity }]}>
+      <SafeAreaView edges={['top']} style={styles.closeButtonContainer}>
+        <Animated.View style={[styles.closeButtonWrapper, { opacity: uiOpacity }]}>
           <TouchableOpacity 
-            style={[styles.backButton, settings.isDarkMode && styles.backButtonDark]}
+            style={styles.closeButton}
             onPress={handleBackPress}
             activeOpacity={0.8}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons 
-              name="arrow-back" 
+              name="close" 
               size={24} 
               color={settings.isDarkMode ? '#f8fafc' : '#1f2937'} 
             />
@@ -235,7 +242,6 @@ const ReadingScreen = ({ navigation, route }) => {
         </Animated.View>
       </SafeAreaView>
 
-      {/* Main Content */}
       <TouchableWithoutFeedback onPress={toggleUI}>
         <View style={styles.contentWrapper}>
           <PanGestureHandler
@@ -283,29 +289,17 @@ const ReadingScreen = ({ navigation, route }) => {
         </View>
       </TouchableWithoutFeedback>
 
-      {/* Section Counter */}
-      <SafeAreaView edges={['bottom']} style={styles.sectionCounterContainer}>
-        <Animated.View style={[
-          styles.sectionCounter,
-          settings.isDarkMode && styles.sectionCounterDark,
-          { opacity: uiOpacity }
+      <Animated.View style={[
+        styles.sectionCounter,
+        { opacity: uiOpacity }
+      ]}>
+        <Text style={[
+          styles.sectionText, 
+          settings.isDarkMode && styles.sectionTextDark
         ]}>
-          <Text style={[
-            styles.sectionText, 
-            settings.isDarkMode && styles.sectionTextDark
-          ]}>
-            {currentSectionIndex + 1} of {sections.length}
-          </Text>
-          {progress > 0 && !isPageMode && (
-            <Text style={[
-              styles.progressText,
-              settings.isDarkMode && styles.progressTextDark
-            ]}>
-              {Math.round(progress)}% complete
-            </Text>
-          )}
-        </Animated.View>
-      </SafeAreaView>
+          {currentSectionIndex + 1} of {sections.length}
+        </Text>
+      </Animated.View>
     </View>
   );
 };
@@ -334,38 +328,28 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#2563eb',
   },
-  backButtonContainer: {
+  closeButtonContainer: {
     position: 'absolute',
     top: 0,
-    left: 0,
+    right: 0,
     zIndex: 1000,
   },
-  backButtonWrapper: {
-    paddingTop: 24,
-    paddingLeft: 24,
+  closeButtonWrapper: {
+    paddingTop: 8,
+    paddingRight: 24,
   },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  closeButton: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  backButtonDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.95)',
   },
   contentWrapper: {
     flex: 1,
   },
   content: {
     flex: 1,
-    paddingTop: 140,
+    paddingTop: 80,
     paddingBottom: 120,
     paddingHorizontal: 28,
   },
@@ -403,46 +387,21 @@ const styles = StyleSheet.create({
   pageCounterDark: {
     color: '#60a5fa',
   },
-  sectionCounterContainer: {
+  sectionCounter: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 80,
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 1000,
-    paddingBottom: 40,
-  },
-  sectionCounter: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  sectionCounterDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.95)',
   },
   sectionText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
-    marginBottom: 2,
-  },
-  sectionTextDark: {
-    color: '#e5e7eb',
-  },
-  progressText: {
-    fontSize: 12,
-    fontWeight: '500',
     color: '#6b7280',
   },
-  progressTextDark: {
-    color: '#9ca3af',
+  sectionTextDark: {
+    color: '#94a3b8',
   },
 });
 

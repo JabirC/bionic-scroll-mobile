@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
-const BOOK_WIDTH = (width - 80) / 3; // Adjusted for better spacing
+const BOOK_WIDTH = (width - 80) / 3;
 const BOOK_HEIGHT = BOOK_WIDTH * 1.4;
 const BOOKS_PER_SHELF = 3;
 
@@ -57,7 +57,6 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
     return colors[Math.abs(hash) % colors.length];
   };
 
-  // Organize books into shelves
   const organizeIntoShelves = () => {
     const shelves = [];
     let currentShelf = [];
@@ -65,7 +64,6 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
     books.forEach((book, index) => {
       currentShelf.push(book);
       
-      // When shelf is full or we've reached the last book
       if (currentShelf.length === BOOKS_PER_SHELF || index === books.length - 1) {
         shelves.push([...currentShelf]);
         currentShelf = [];
@@ -79,6 +77,7 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
     const progress = getProgressPercentage(book);
     const coverColors = generateBookCover(book);
     const isSelected = selectedBook === book.id;
+    const cleanTitle = book.name.replace(/\.(pdf|epub)$/i, '');
 
     return (
       <View key={book.id} style={styles.bookContainer}>
@@ -99,8 +98,8 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
             end={{ x: 1, y: 1 }}
           >
             <View style={styles.bookContent}>
-              <Text style={styles.bookTitle} numberOfLines={3}>
-                {book.name.replace(/\.(pdf|epub)$/i, '')}
+              <Text style={styles.bookTitle} numberOfLines={3} ellipsizeMode="tail">
+                {cleanTitle}
               </Text>
               
               <View style={styles.fileTypeIndicator}>
@@ -109,15 +108,6 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
                 </Text>
               </View>
             </View>
-            
-            {progress > 0 && (
-              <View style={styles.progressOverlay}>
-                <View style={[
-                  styles.progressIndicator,
-                  { width: `${progress}%` }
-                ]} />
-              </View>
-            )}
             
             <View style={[styles.bookSpine, isDarkMode && styles.bookSpineDark]} />
           </LinearGradient>
@@ -139,10 +129,10 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
         <View style={styles.bookInfo}>
           <Text 
             style={[styles.bookLabel, isDarkMode && styles.bookLabelDark]}
-            numberOfLines={2}
+            numberOfLines={1}
             ellipsizeMode="tail"
           >
-            {book.name.replace(/\.(pdf|epub)$/i, '')}
+            {cleanTitle}
           </Text>
           
           <View style={styles.bookMeta}>
@@ -166,7 +156,6 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
       <View style={styles.shelfBooks}>
         {books.map(book => renderBook(book))}
         
-        {/* Fill empty positions with placeholders */}
         {Array.from({ length: BOOKS_PER_SHELF - books.length }).map((_, index) => (
           <View key={`empty-${shelfIndex}-${index}`} style={styles.emptyBookSlot} />
         ))}
@@ -193,7 +182,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-    paddingBottom: 140, // Account for floating tab bar
+    paddingBottom: 140,
   },
   shelfContainer: {
     marginBottom: 40,
@@ -263,19 +252,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
-  progressOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-  },
-  progressIndicator: {
-    height: '100%',
-    backgroundColor: '#ffffff',
-    opacity: 0.8,
-  },
   bookSpine: {
     position: 'absolute',
     left: 0,
@@ -309,6 +285,7 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 12,
     alignItems: 'center',
+    height: 32,
   },
   bookLabel: {
     fontSize: 12,
@@ -317,6 +294,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 4,
     lineHeight: 14,
+    width: '100%',
   },
   bookLabelDark: {
     color: '#d1d5db',

@@ -8,28 +8,14 @@ import { useColorScheme, StatusBar } from 'react-native';
 import LibraryScreen from '../screens/LibraryScreen';
 import ReadingScreen from '../screens/ReadingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import SplashScreenComponent from '../components/SplashScreen';
 import FloatingTabBar from '../components/FloatingTabBar';
 import { SettingsManager } from '../utils/settingsManager';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-const LibraryStack = () => (
-  <Stack.Navigator>
-    <Stack.Screen 
-      name="LibraryHome" 
-      component={LibraryScreen}
-      options={{ headerShown: false }}
-    />
-    <Stack.Screen 
-      name="Reading" 
-      component={ReadingScreen}
-      options={{ headerShown: false }}
-    />
-  </Stack.Navigator>
-);
-
-const AppNavigator = () => {
+const MainTabs = () => {
   const systemColorScheme = useColorScheme();
   const [isDarkMode, setIsDarkMode] = React.useState(systemColorScheme === 'dark');
   const settingsManager = new SettingsManager();
@@ -44,26 +30,65 @@ const AppNavigator = () => {
   };
 
   return (
+    <Tab.Navigator
+      tabBar={(props) => <FloatingTabBar {...props} isDarkMode={isDarkMode} />}
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Tab.Screen 
+        name="Library" 
+        component={LibraryScreen}
+      />
+      <Tab.Screen 
+        name="Settings" 
+        component={ProfileScreen}
+      />
+    </Tab.Navigator>
+  );
+};
+
+const LibraryStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen 
+      name="LibraryHome" 
+      component={MainTabs}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen 
+      name="Reading" 
+      component={ReadingScreen}
+      options={{ 
+        headerShown: false,
+        presentation: 'fullScreenModal'
+      }}
+    />
+  </Stack.Navigator>
+);
+
+const AppNavigator = () => {
+  const [isReady, setIsReady] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!isReady) {
+    return <SplashScreenComponent />;
+  }
+
+  return (
     <NavigationContainer>
       <StatusBar 
-        style={isDarkMode ? 'light' : 'dark'}
-        backgroundColor={isDarkMode ? '#0f172a' : '#ffffff'}
+        style="auto"
+        backgroundColor="transparent"
+        translucent
       />
-      <Tab.Navigator
-        tabBar={(props) => <FloatingTabBar {...props} isDarkMode={isDarkMode} />}
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Tab.Screen 
-          name="Library" 
-          component={LibraryStack}
-        />
-        <Tab.Screen 
-          name="Settings" 
-          component={ProfileScreen}
-        />
-      </Tab.Navigator>
+      <LibraryStack />
     </NavigationContainer>
   );
 };
