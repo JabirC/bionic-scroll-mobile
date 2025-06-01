@@ -5,16 +5,16 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
-  FlatList,
+  ScrollView,
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
-const BOOK_WIDTH = (width - 60) / 3;
+const BOOK_WIDTH = (width - 80) / 3; // Adjusted for better spacing
 const BOOK_HEIGHT = BOOK_WIDTH * 1.4;
+const BOOKS_PER_SHELF = 3;
 
 const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
   const [selectedBook, setSelectedBook] = useState(null);
@@ -36,7 +36,6 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
   };
 
   const generateBookCover = (book) => {
-    // Generate a gradient based on book name
     const colors = [
       ['#667eea', '#764ba2'],
       ['#f093fb', '#f5576c'],
@@ -46,6 +45,8 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
       ['#a8edea', '#fed6e3'],
       ['#ff9a9e', '#fecfef'],
       ['#ffecd2', '#fcb69f'],
+      ['#84fab0', '#8fd3f4'],
+      ['#a18cd1', '#fbc2eb'],
     ];
     
     const hash = book.name.split('').reduce((a, b) => {
@@ -56,21 +57,39 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
     return colors[Math.abs(hash) % colors.length];
   };
 
-  const renderBook = ({ item, index }) => {
-    const progress = getProgressPercentage(item);
-    const coverColors = generateBookCover(item);
-    const isSelected = selectedBook === item.id;
+  // Organize books into shelves
+  const organizeIntoShelves = () => {
+    const shelves = [];
+    let currentShelf = [];
+    
+    books.forEach((book, index) => {
+      currentShelf.push(book);
+      
+      // When shelf is full or we've reached the last book
+      if (currentShelf.length === BOOKS_PER_SHELF || index === books.length - 1) {
+        shelves.push([...currentShelf]);
+        currentShelf = [];
+      }
+    });
+    
+    return shelves;
+  };
+
+  const renderBook = (book) => {
+    const progress = getProgressPercentage(book);
+    const coverColors = generateBookCover(book);
+    const isSelected = selectedBook === book.id;
 
     return (
-      <View style={styles.bookContainer}>
+      <View key={book.id} style={styles.bookContainer}>
         <TouchableOpacity
           style={[
             styles.book,
             isSelected && styles.bookSelected,
             isDarkMode && styles.bookDark
           ]}
-          onPress={() => onBookPress(item)}
-          onLongPress={() => setSelectedBook(isSelected ? null : item.id)}
+          onPress={() => onBookPress(book)}
+          onLongPress={() => setSelectedBook(isSelected ? null : book.id)}
           activeOpacity={0.8}
         >
           <LinearGradient
@@ -81,18 +100,16 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
           >
             <View style={styles.bookContent}>
               <Text style={styles.bookTitle} numberOfLines={3}>
-                {item.name.replace(/\.(pdf|epub)$/i, '')}
+                {book.name.replace(/\.(pdf|epub)$/i, '')}
               </Text>
               
-              {/* File type indicator */}
               <View style={styles.fileTypeIndicator}>
                 <Text style={styles.fileType}>
-                  {item.type === 'application/pdf' ? 'PDF' : 'EPUB'}
+                  {book.type === 'application/pdf' ? 'PDF' : 'EPUB'}
                 </Text>
               </View>
             </View>
             
-            {/* Progress overlay */}
             {progress > 0 && (
               <View style={styles.progressOverlay}>
                 <View style={[
@@ -102,7 +119,6 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
               </View>
             )}
             
-            {/* Spine effect */}
             <View style={[styles.bookSpine, isDarkMode && styles.bookSpineDark]} />
           </LinearGradient>
           
@@ -110,7 +126,7 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => {
-                onDeleteBook(item.id);
+                onDeleteBook(book.id);
                 setSelectedBook(null);
               }}
               activeOpacity={0.7}
@@ -126,12 +142,12 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
             numberOfLines={2}
             ellipsizeMode="tail"
           >
-            {item.name.replace(/\.(pdf|epub)$/i, '')}
+            {book.name.replace(/\.(pdf|epub)$/i, '')}
           </Text>
           
           <View style={styles.bookMeta}>
             <Text style={[styles.bookDate, isDarkMode && styles.bookDateDark]}>
-              {formatDate(item.lastRead || item.dateAdded)}
+              {formatDate(book.lastRead || book.dateAdded)}
             </Text>
             
             {progress > 0 && (
@@ -145,54 +161,55 @@ const BookShelf = ({ books, onBookPress, onDeleteBook, isDarkMode }) => {
     );
   };
 
-  const renderShelf = () => (
-    <View style={[styles.shelf, isDarkMode && styles.shelfDark]} />
+  const renderShelf = (books, shelfIndex) => (
+    <View key={shelfIndex} style={styles.shelfContainer}>
+      <View style={styles.shelfBooks}>
+        {books.map(book => renderBook(book))}
+        
+        {/* Fill empty positions with placeholders */}
+        {Array.from({ length: BOOKS_PER_SHELF - books.length }).map((_, index) => (
+          <View key={`empty-${shelfIndex}-${index}`} style={styles.emptyBookSlot} />
+        ))}
+      </View>
+    </View>
   );
 
+  const shelves = organizeIntoShelves();
+
   return (
-    <FlatList
-      data={books}
-      renderItem={renderBook}
-      keyExtractor={(item) => item.id}
-      numColumns={3}
-      contentContainerStyle={styles.container}
-      columnWrapperStyle={styles.row}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
-      ListFooterComponent={books.length > 0 ? renderShelf : null}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
-    />
+    >
+      {shelves.map((shelfBooks, index) => renderShelf(shelfBooks, index))}
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  contentContainer: {
     padding: 20,
-    paddingBottom: 120,
+    paddingBottom: 140, // Account for floating tab bar
   },
-  row: {
+  shelfContainer: {
+    marginBottom: 40,
+  },
+  shelfBooks: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 30,
-  },
-  separator: {
-    height: 20,
-  },
-  shelf: {
-    height: 8,
-    backgroundColor: '#8b5cf6',
-    marginTop: 10,
-    marginHorizontal: -20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  shelfDark: {
-    backgroundColor: '#7c3aed',
+    alignItems: 'flex-end',
+    paddingHorizontal: 10,
   },
   bookContainer: {
     width: BOOK_WIDTH,
     alignItems: 'center',
+  },
+  emptyBookSlot: {
+    width: BOOK_WIDTH,
   },
   book: {
     width: BOOK_WIDTH - 10,
@@ -231,6 +248,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     lineHeight: 16,
+    marginBottom: 8,
   },
   fileTypeIndicator: {
     alignSelf: 'center',

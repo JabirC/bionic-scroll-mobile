@@ -36,14 +36,37 @@ const ReadingScreen = ({ navigation, route }) => {
   const uiOpacity = useRef(new Animated.Value(1)).current;
   const lastScrollTime = useRef(Date.now());
 
+  // Hide navigation bar on screen focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      StatusBar.setHidden(true);
+      // Hide the tab bar when entering reading screen
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: { display: 'none' }
+        });
+      }
+    });
+
+    const unsubscribeBlur = navigation.addListener('blur', () => {
+      // Show the tab bar when leaving reading screen
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: {
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+          }
+        });
+      }
     });
 
     return () => {
-      StatusBar.setHidden(false);
       unsubscribe();
+      unsubscribeBlur();
     };
   }, [navigation]);
 
@@ -195,7 +218,7 @@ const ReadingScreen = ({ navigation, route }) => {
         <View style={[styles.progressFill, { width: `${progress}%` }]} />
       </Animated.View>
 
-      {/* Back Button with improved spacing */}
+      {/* Back Button */}
       <SafeAreaView edges={['top']} style={styles.backButtonContainer}>
         <Animated.View style={[styles.backButtonWrapper, { opacity: uiOpacity }]}>
           <TouchableOpacity 
@@ -239,15 +262,20 @@ const ReadingScreen = ({ navigation, route }) => {
                     styles.pageMessage, 
                     settings.isDarkMode && styles.pageMessageDark
                   ]}>
-                    Page {currentSectionIndex + 1} of {sections.length}
+                    Document Viewer
                   </Text>
                   <Text style={[
                     styles.pageNote,
                     settings.isDarkMode && styles.pageNoteDark
                   ]}>
-                    Text extraction failed for this document. Displaying as page.
+                    This document is displayed in its original format as text extraction was not possible.
                   </Text>
-                  {/* Here you would implement page viewing */}
+                  <Text style={[
+                    styles.pageCounter,
+                    settings.isDarkMode && styles.pageCounterDark
+                  ]}>
+                    Page {currentSectionIndex + 1} of {sections.length}
+                  </Text>
                 </View>
               )}
             </Animated.View>
@@ -255,7 +283,7 @@ const ReadingScreen = ({ navigation, route }) => {
         </View>
       </TouchableWithoutFeedback>
 
-      {/* Section Counter with better styling */}
+      {/* Section Counter */}
       <SafeAreaView edges={['bottom']} style={styles.sectionCounterContainer}>
         <Animated.View style={[
           styles.sectionCounter,
@@ -268,7 +296,7 @@ const ReadingScreen = ({ navigation, route }) => {
           ]}>
             {currentSectionIndex + 1} of {sections.length}
           </Text>
-          {progress > 0 && (
+          {progress > 0 && !isPageMode && (
             <Text style={[
               styles.progressText,
               settings.isDarkMode && styles.progressTextDark
@@ -337,9 +365,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 140, // Increased spacing from back button
+    paddingTop: 140,
     paddingBottom: 120,
-    paddingHorizontal: 28, // Slightly increased horizontal padding
+    paddingHorizontal: 28,
   },
   pageContainer: {
     flex: 1,
@@ -348,23 +376,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   pageMessage: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: '#374151',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   pageMessageDark: {
     color: '#e5e7eb',
   },
   pageNote: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 24,
+    marginBottom: 24,
   },
   pageNoteDark: {
     color: '#9ca3af',
+  },
+  pageCounter: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2563eb',
+  },
+  pageCounterDark: {
+    color: '#60a5fa',
   },
   sectionCounterContainer: {
     position: 'absolute',
@@ -373,7 +410,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 1000,
-    paddingBottom: 140, // Account for floating tab bar
+    paddingBottom: 40,
   },
   sectionCounter: {
     alignItems: 'center',

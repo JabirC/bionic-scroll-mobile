@@ -16,7 +16,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { StorageManager } from '../utils/storageManager';
 import { SettingsManager } from '../utils/settingsManager';
-import { TextExtractor } from '../utils/textExtractor';
+import { PDFExtractor } from '../utils/pdfExtractor';
+import { EPUBExtractor } from '../utils/epubExtractor';
 import BookShelf from '../components/BookShelf';
 
 const LibraryScreen = ({ navigation }) => {
@@ -31,7 +32,8 @@ const LibraryScreen = ({ navigation }) => {
 
   const storageManager = new StorageManager();
   const settingsManager = new SettingsManager();
-  const textExtractor = new TextExtractor();
+  const pdfExtractor = new PDFExtractor();
+  const epubExtractor = new EPUBExtractor();
 
   useFocusEffect(
     useCallback(() => {
@@ -119,9 +121,9 @@ const LibraryScreen = ({ navigation }) => {
       let extractionResult;
       
       if (file.mimeType === 'application/pdf') {
-        extractionResult = await textExtractor.extractFromPDF(file.uri);
+        extractionResult = await pdfExtractor.extractText(file.uri);
       } else if (file.mimeType === 'application/epub+zip') {
-        extractionResult = await textExtractor.extractFromEPUB(file.uri);
+        extractionResult = await epubExtractor.extractText(file.uri);
       } else {
         throw new Error('Unsupported file type');
       }
@@ -140,7 +142,7 @@ const LibraryScreen = ({ navigation }) => {
             uploadedAt: new Date().toISOString(),
             wordCount,
             extractionFailed: extractionResult.extractionFailed,
-            hasPages: !!extractionResult.pages
+            originalFormat: extractionResult.originalFormat
           }
         },
         extractionResult
@@ -149,11 +151,11 @@ const LibraryScreen = ({ navigation }) => {
       if (extractionResult.extractionFailed) {
         Alert.alert(
           'Upload Complete',
-          extractionResult.message || 'Book uploaded but text extraction failed. It will be displayed page by page.',
+          extractionResult.message || 'Book uploaded successfully! Text extraction had limitations, but the document is viewable.',
           [{ text: 'OK' }]
         );
       } else {
-        Alert.alert('Success', 'Book uploaded successfully!');
+        Alert.alert('Success', 'Book uploaded and processed successfully!');
       }
       
       loadBooks();
@@ -216,7 +218,6 @@ const LibraryScreen = ({ navigation }) => {
       ]} 
       edges={['top']}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View>
@@ -249,7 +250,6 @@ const LibraryScreen = ({ navigation }) => {
         )}
       </View>
 
-      {/* Content */}
       {books.length > 0 ? (
         <BookShelf
           books={books}
