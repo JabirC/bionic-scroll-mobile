@@ -36,19 +36,13 @@ const LibraryScreen = ({ navigation }) => {
 
   useFocusEffect(
     useCallback(() => {
-      loadBooks();
-      loadSettings();
+      loadData();
     }, [])
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      const unsubscribe = navigation.addListener('focus', () => {
-        loadSettings();
-      });
-      return unsubscribe;
-    }, [navigation])
-  );
+  const loadData = async () => {
+    await Promise.all([loadBooks(), loadSettings()]);
+  };
 
   const loadBooks = async () => {
     setIsLoading(true);
@@ -64,12 +58,7 @@ const LibraryScreen = ({ navigation }) => {
 
   const loadSettings = async () => {
     const userSettings = await settingsManager.getSettings();
-    setSettings(prev => {
-      if (JSON.stringify(prev) !== JSON.stringify(userSettings)) {
-        return userSettings;
-      }
-      return prev;
-    });
+    setSettings(userSettings);
   };
 
   const handleBookPress = async (book) => {
@@ -267,7 +256,7 @@ const LibraryScreen = ({ navigation }) => {
           >
             <Ionicons 
               name="add" 
-              size={24} 
+              size={28} 
               color={settings.isDarkMode ? '#ffffff' : '#000000'} 
             />
           </TouchableOpacity>
@@ -340,16 +329,17 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   addButton: {
-    width: 44,
-    height: 44,
+    width: 50,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 40,
+    paddingTop: 120,
   },
   emptyMessage: {
     fontSize: 18,

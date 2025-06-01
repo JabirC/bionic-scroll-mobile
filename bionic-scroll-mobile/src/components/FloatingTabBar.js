@@ -61,7 +61,7 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
           const getIconName = () => {
             switch (route.name) {
               case 'Library':
-                return 'book';
+                return 'library';
               case 'Settings':
                 return 'settings-sharp';
               default:
@@ -87,7 +87,7 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
                 size={isFocused ? 24 : 22}
                 color={
                   isFocused 
-                    ? '#ffffff'
+                    ? (isDarkMode ? '#000000' : '#ffffff')
                     : isDarkMode 
                       ? '#666666' 
                       : '#999999'

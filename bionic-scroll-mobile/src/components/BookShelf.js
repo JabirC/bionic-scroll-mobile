@@ -104,11 +104,6 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
                 style={styles.coverImage}
                 resizeMode="cover"
               />
-              <View style={styles.fileTypeOverlay}>
-                <Text style={styles.fileType}>
-                  {book.type === 'application/pdf' ? 'PDF' : 'EPUB'}
-                </Text>
-              </View>
               {isUploading && (
                 <View style={styles.uploadOverlay}>
                   <View style={styles.uploadFilter} />
@@ -137,12 +132,6 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
                 <Text style={styles.bookTitle} numberOfLines={3} ellipsizeMode="tail">
                   {cleanTitle}
                 </Text>
-                
-                <View style={styles.fileTypeIndicator}>
-                  <Text style={styles.fileType}>
-                    {book.type === 'application/pdf' ? 'PDF' : 'EPUB'}
-                  </Text>
-                </View>
               </View>
               
               {isUploading && (
@@ -163,8 +152,6 @@ const BookShelf = ({ books, uploadingBooks, onBookPress, onDeleteBook, isDarkMod
               )}
             </LinearGradient>
           )}
-          
-          <View style={[styles.bookSpine, isDarkMode && styles.bookSpineDark]} />
           
           {isSelected && !isUploading && (
             <TouchableOpacity
@@ -286,15 +273,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  fileTypeOverlay: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
   uploadOverlay: {
     position: 'absolute',
     top: 0,
@@ -320,7 +298,7 @@ const styles = StyleSheet.create({
   bookContent: {
     flex: 1,
     padding: 16,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   bookTitle: {
     color: '#ffffff',
@@ -333,33 +311,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: 'System',
   },
-  fileTypeIndicator: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backdropFilter: 'blur(10px)',
-  },
-  fileType: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: '600',
-    fontFamily: 'System',
-  },
-  bookSpine: {
-    position: 'absolute',
-    left: 0,
-    top: 12,
-    bottom: 12,
-    width: 3,
-    backgroundColor: 'rgba(0, 0, 0, 0.15)',
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
-  },
-  bookSpineDark: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
   deleteButton: {
     position: 'absolute',
     top: -8,
@@ -367,10 +318,10 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#000000',
+    backgroundColor: '#dc2626',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
+    shadowColor: '#dc2626',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -411,7 +362,7 @@ const styles = StyleSheet.create({
   },
   bookProgress: {
     fontSize: 10,
-    color: '#000000',
+    color: '#2563eb',
     fontWeight: '600',
     fontFamily: 'System',
   },

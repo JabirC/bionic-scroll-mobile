@@ -114,7 +114,8 @@ const ProfileScreen = ({ navigation }) => {
             styles.fontSizeLabel,
             { fontSize: font.size },
             settings.isDarkMode && styles.fontSizeLabelDark,
-            settings.fontSize === font.value && styles.fontSizeLabelSelected
+            settings.fontSize === font.value && styles.fontSizeLabelSelected,
+            settings.fontSize === font.value && settings.isDarkMode && styles.fontSizeLabelSelectedDark
           ]}>
             A
           </Text>
@@ -337,6 +338,9 @@ const styles = StyleSheet.create({
   },
   fontSizeLabelSelected: {
     color: '#ffffff',
+  },
+  fontSizeLabelSelectedDark: {
+    color: '#000000',
   },
 });
 

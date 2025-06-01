@@ -13,11 +13,11 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
       <style>
         body {
-          font-family: 'Times New Roman', 'Minion Pro', 'PT Serif', 'Georgia', serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'San Francisco', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
           font-size: ${fontSize}px;
-          line-height: 1.8;
+          line-height: 1.6;
           margin: 0;
-          padding: 20px;
+          padding: 8px;
           padding-bottom: 40px;
           background-color: ${isDarkMode ? '#000000' : '#ffffff'};
           color: ${isDarkMode ? '#f3f4f6' : '#1a1a1a'};
@@ -25,17 +25,17 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
           min-height: 100vh;
           box-sizing: border-box;
           font-weight: 400;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.2px;
         }
         
         .content {
-          max-width: 600px;
+          max-width: 100%;
           width: 100%;
           margin: 0 auto;
         }
         
         p {
-          margin: 0 0 ${fontSize * 1.2}px 0;
+          margin: 0 0 ${fontSize * 1.1}px 0;
           text-align: left;
           font-weight: 400;
           word-wrap: break-word;
@@ -53,7 +53,7 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
         }
         
         b {
-          font-weight: 700;
+          font-weight: 600;
           color: ${isDarkMode ? '#ffffff' : '#000000'};
         }
         

@@ -286,7 +286,8 @@ const ReadingScreen = ({ navigation, route }) => {
           <Text style={[
             styles.pageNumber,
             settings.isDarkMode && styles.pageNumberDark,
-            isCurrentSection && styles.pageNumberActive
+            isCurrentSection && styles.pageNumberActive,
+            isCurrentSection && settings.isDarkMode && styles.pageNumberActiveDark
           ]}>
             {index + 1}
           </Text>
@@ -294,7 +295,8 @@ const ReadingScreen = ({ navigation, route }) => {
             style={[
               styles.pagePreview,
               settings.isDarkMode && styles.pagePreviewDark,
-              isCurrentSection && styles.pagePreviewActive
+              isCurrentSection && styles.pagePreviewActive,
+              isCurrentSection && settings.isDarkMode && styles.pagePreviewActiveDark
             ]}
             numberOfLines={4}
           >
@@ -311,25 +313,20 @@ const ReadingScreen = ({ navigation, route }) => {
           { opacity: carouselOpacity }
         ]}
       >
-        <View style={[
-          styles.carouselBackground,
-          settings.isDarkMode && styles.carouselBackgroundDark
-        ]}>
-          <FlatList
-            data={sections}
-            renderItem={renderSectionItem}
-            keyExtractor={(item, index) => index.toString()}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContent}
-            initialScrollIndex={Math.max(0, currentSectionIndex - 1)}
-            getItemLayout={(data, index) => ({
-              length: 120,
-              offset: 130 * index,
-              index,
-            })}
-          />
-        </View>
+        <FlatList
+          data={sections}
+          renderItem={renderSectionItem}
+          keyExtractor={(item, index) => index.toString()}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carouselContent}
+          initialScrollIndex={Math.max(0, currentSectionIndex - 1)}
+          getItemLayout={(data, index) => ({
+            length: 120,
+            offset: 130 * index,
+            index,
+          })}
+        />
       </Animated.View>
     );
   };
@@ -501,7 +498,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 80,
     paddingBottom: 120,
-    paddingHorizontal: 28,
+    paddingHorizontal: 14,
   },
   pageContainer: {
     flex: 1,
@@ -567,25 +564,10 @@ const styles = StyleSheet.create({
     right: 0,
     height: 200,
     zIndex: 999,
-  },
-  carouselBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    marginHorizontal: 20,
-    borderRadius: 16,
     paddingVertical: 16,
-    paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  carouselBackgroundDark: {
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
   },
   carouselContent: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 0,
   },
   pageItem: {
     width: 110,
@@ -597,6 +579,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e5e5',
     justifyContent: 'space-between',
+    marginLeft: 12,
   },
   pageItemDark: {
     backgroundColor: '#1a1a1a',
@@ -623,6 +606,9 @@ const styles = StyleSheet.create({
   pageNumberActive: {
     color: '#ffffff',
   },
+  pageNumberActiveDark: {
+    color: '#000000',
+  },
   pagePreview: {
     fontSize: 11,
     color: '#6b7280',
@@ -634,6 +620,9 @@ const styles = StyleSheet.create({
   },
   pagePreviewActive: {
     color: 'rgba(255, 255, 255, 0.9)',
+  },
+  pagePreviewActiveDark: {
+    color: 'rgba(0, 0, 0, 0.7)',
   },
 });
 
