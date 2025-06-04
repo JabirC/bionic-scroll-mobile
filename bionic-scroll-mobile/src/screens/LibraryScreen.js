@@ -26,7 +26,6 @@ const LibraryScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadingBooks, setUploadingBooks] = useState(new Map());
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [selectedBook, setSelectedBook] = useState(null);
 
   const { settings } = useSettings();
   const backgroundColorAnim = useRef(new Animated.Value(0)).current;
@@ -54,13 +53,31 @@ const LibraryScreen = ({ navigation }) => {
     }
     
     try {
+      console.log('Loading books and categories...');
+      
       const [library, userCategories] = await Promise.all([
         storageManager.getLibrary(),
         storageManager.getCategories()
       ]);
       
-      setBooks(library.sort((a, b) => new Date(b.lastRead || b.dateAdded) - new Date(a.lastRead || a.dateAdded)));
-      setCategories(userCategories);
+      console.log('Loaded library:', library.length, 'books');
+      console.log('Loaded categories:', userCategories.length, 'categories');
+      
+      // Sort books by last read or date added
+      const sortedBooks = library.sort((a, b) => 
+        new Date(b.lastRead || b.dateAdded) - new Date(a.lastRead || a.dateAdded)
+      );
+      
+      setBooks(sortedBooks);
+      
+      // Don't auto-delete empty categories - keep all user-created categories
+      // Only filter out categories that don't exist anymore
+      const validCategories = userCategories.filter(category => 
+        category && category.id && category.name
+      );
+      
+      console.log('Setting categories:', validCategories);
+      setCategories(validCategories);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -73,8 +90,6 @@ const LibraryScreen = ({ navigation }) => {
     if (uploadingBooks.has(book.id)) {
       return;
     }
-
-    setSelectedBook(null);
 
     try {
       const bookData = await storageManager.getBookContent(book.id);
@@ -93,31 +108,19 @@ const LibraryScreen = ({ navigation }) => {
   };
 
   const handleDeleteBook = async (bookId) => {
-    Alert.alert(
-      'Remove Book',
-      'Are you sure you want to remove this book from your library?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await storageManager.deleteBook(bookId);
-              setSelectedBook(null);
-              loadBooksAndCategories();
-            } catch (error) {
-              Alert.alert('Error', 'Could not remove book');
-            }
-          },
-        },
-      ]
-    );
+    try {
+      console.log('Deleting book:', bookId);
+      await storageManager.deleteBook(bookId);
+      
+      // Reload to ensure consistency
+      await loadBooksAndCategories();
+    } catch (error) {
+      console.error('Error deleting book:', error);
+      Alert.alert('Error', 'Could not remove book');
+    }
   };
 
   const handleUploadPress = async () => {
-    setSelectedBook(null);
-    
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'application/epub+zip'],
@@ -241,28 +244,67 @@ const LibraryScreen = ({ navigation }) => {
 
   const handleCreateCategory = async (name) => {
     try {
-      await storageManager.createCategory(name);
-      loadBooksAndCategories();
+      console.log('Creating category:', name);
+      
+      // Create the category and get the full category object
+      const newCategory = await storageManager.createCategory(name);
+      
+      console.log('Category created:', newCategory);
+      
+      if (!newCategory || !newCategory.id) {
+        throw new Error('Failed to create category - invalid response');
+      }
+      
+      // Immediately add the new category to our local state
+      setCategories(prev => [...prev, newCategory]);
+      
+      // Also reload to ensure consistency
+      setTimeout(() => {
+        loadBooksAndCategories();
+      }, 100);
+      
+      return newCategory;
     } catch (error) {
-      Alert.alert('Error', 'Failed to create category');
-    }
-  };
-
-  const handleDeleteCategory = async (categoryId) => {
-    try {
-      await storageManager.deleteCategory(categoryId);
-      loadBooksAndCategories();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to delete category');
+      console.error('Error creating category:', error);
+      Alert.alert('Error', 'Failed to create collection');
+      return null;
     }
   };
 
   const handleBookCategoryChange = async (bookId, categoryId) => {
     try {
-      await storageManager.updateBookCategory(bookId, categoryId);
-      loadBooksAndCategories();
+      console.log('Moving book:', bookId, 'to category:', categoryId);
+      
+      // Update the book's category in storage
+      const success = await storageManager.updateBookCategory(bookId, categoryId);
+      
+      if (success === false) {
+        throw new Error('Storage update failed');
+      }
+      
+      console.log('Book category updated in storage');
+      
+      // Immediately update the local book state
+      setBooks(prevBooks => 
+        prevBooks.map(book => 
+          book.id === bookId 
+            ? { ...book, categoryId: categoryId }
+            : book
+        )
+      );
+      
+      console.log('Local book state updated');
+      
+      // Reload to ensure consistency
+      setTimeout(() => {
+        loadBooksAndCategories();
+      }, 100);
+      
+      return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to move book');
+      console.error('Error updating book category:', error);
+      Alert.alert('Error', 'Failed to move book to collection');
+      return false;
     }
   };
 
@@ -287,8 +329,11 @@ const LibraryScreen = ({ navigation }) => {
   };
 
   const organizeBooksShelves = () => {
+    console.log('Organizing shelves with', books.length, 'books and', categories.length, 'categories');
+    
     const shelves = [];
     
+    // Create "All" shelf with books that have no category or categoryId === 'all'
     const allBooks = books
       .filter(book => !book.categoryId || book.categoryId === 'all')
       .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
@@ -300,10 +345,15 @@ const LibraryScreen = ({ navigation }) => {
       isDefault: true
     });
 
+    // Create shelves for each category
     categories.forEach(category => {
+      console.log('Processing category:', category.name, 'with ID:', category.id);
+      
       const categoryBooks = books
         .filter(book => book.categoryId === category.id)
         .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+      
+      console.log('Category', category.name, 'has', categoryBooks.length, 'books');
       
       shelves.push({
         id: category.id,
@@ -313,6 +363,7 @@ const LibraryScreen = ({ navigation }) => {
       });
     });
 
+    console.log('Created', shelves.length, 'shelves');
     return shelves;
   };
 
@@ -361,11 +412,8 @@ const LibraryScreen = ({ navigation }) => {
             onBookPress={handleBookPress}
             onDeleteBook={handleDeleteBook}
             onCreateCategory={handleCreateCategory}
-            onDeleteCategory={handleDeleteCategory}
             onBookCategoryChange={handleBookCategoryChange}
             isDarkMode={settings.isDarkMode}
-            selectedBook={selectedBook}
-            onBookLongPress={setSelectedBook}
           />
         ) : (
           !isLoading && renderEmptyState()

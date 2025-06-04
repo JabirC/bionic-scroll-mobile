@@ -1,5 +1,5 @@
 // src/components/BookShelf.js
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,10 @@ import {
   Dimensions,
   Image,
   TextInput,
-  Alert,
-  Animated,
   Modal,
+  Animated,
+  TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +21,7 @@ import * as Progress from 'react-native-progress';
 const { width: screenWidth } = Dimensions.get('window');
 const BOOK_WIDTH = 100;
 const BOOK_HEIGHT = BOOK_WIDTH * 1.4;
+const MAX_OPTION_TITLE_LENGTH = 25;
 
 const BookShelf = ({ 
   shelves, 
@@ -27,16 +29,20 @@ const BookShelf = ({
   onBookPress, 
   onDeleteBook, 
   onCreateCategory,
-  onDeleteCategory,
   onBookCategoryChange,
   isDarkMode, 
-  selectedBook, 
-  onBookLongPress,
 }) => {
-  const [showCreateCategory, setShowCreateCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [bookToMove, setBookToMove] = useState(null);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [showBookOptions, setShowBookOptions] = useState(false);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [optionsPosition, setOptionsPosition] = useState({ x: 0, y: 0 });
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  const optionsScale = useRef(new Animated.Value(0)).current;
+  const optionsOpacity = useRef(new Animated.Value(0)).current;
   
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -76,87 +82,197 @@ const BookShelf = ({
     return colors[Math.abs(hash) % colors.length];
   };
 
-  const handleCreateCategorySubmit = async () => {
-    if (!newCategoryName.trim()) {
-      Alert.alert('Error', 'Please enter a category name');
+  const truncateTitle = (title, maxLength) => {
+    if (title.length <= maxLength) return title;
+    return title.substring(0, maxLength) + '...';
+  };
+
+  // Show book options overlay
+  const showBookOptionsOverlay = (book, event) => {
+    if (isProcessing) return;
+    
+    const { pageX, pageY } = event.nativeEvent;
+    setSelectedBook(book);
+    setOptionsPosition({ x: pageX - 100, y: pageY + 20 });
+    setShowBookOptions(true);
+    
+    Animated.parallel([
+      Animated.timing(optionsScale, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(optionsOpacity, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Hide book options overlay
+  const hideBookOptions = () => {
+    Animated.parallel([
+      Animated.timing(optionsScale, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(optionsOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowBookOptions(false);
+      setSelectedBook(null);
+    });
+  };
+
+  // Handle move to collection button press
+  const handleMoveToCollection = () => {
+    if (isProcessing) return;
+    
+    hideBookOptions();
+    setTimeout(() => {
+      setBookToMove(selectedBook);
+      setShowMoveModal(true);
+    }, 300);
+  };
+
+  // Handle delete book
+  const handleDeleteBook = () => {
+    if (isProcessing) return;
+    
+    hideBookOptions();
+    setTimeout(() => {
+      if (selectedBook) {
+        Alert.alert(
+          'Delete Book',
+          `Are you sure you want to delete "${selectedBook.name.replace(/\.(pdf|epub)$/i, '')}"?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Delete', 
+              style: 'destructive', 
+              onPress: () => onDeleteBook(selectedBook.id) 
+            }
+          ]
+        );
+      }
+    }, 300);
+  };
+
+  // Close all modals and reset state
+  const closeAllModals = () => {
+    setShowMoveModal(false);
+    setShowNewCategoryInput(false);
+    setNewCategoryName('');
+    setBookToMove(null);
+    setIsProcessing(false);
+  };
+
+  // Handle moving book to existing collection
+  const handleMoveToExistingCollection = async (targetCategoryId) => {
+    if (isProcessing || !bookToMove) return;
+
+    // Don't do anything if it's already in this category
+    if (bookToMove.categoryId === targetCategoryId) {
+      closeAllModals();
       return;
     }
-    
-    await onCreateCategory(newCategoryName.trim());
-    setNewCategoryName('');
-    setShowCreateCategory(false);
-  };
 
-  const handleDeleteCategory = (categoryId, categoryName) => {
-    Alert.alert(
-      'Delete Category',
-      `Are you sure you want to delete "${categoryName}"? Books will be moved to "All".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => onDeleteCategory(categoryId),
-        },
-      ]
-    );
-  };
+    setIsProcessing(true);
 
-  const handleMoveBook = (book) => {
-    setBookToMove(book);
-    setShowMoveModal(true);
-  };
-
-  const handleBookAction = (book) => {
-    if (selectedBook === book.id) {
-      // Already selected, show actions
-      Alert.alert(
-        'Book Actions',
-        `"${book.name.replace(/\.(pdf|epub)$/i, '')}"`,
-        [
-          {
-            text: 'Move to Category',
-            onPress: () => handleMoveBook(book),
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => onDeleteBook(book.id),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => onBookLongPress(null),
-          },
-        ]
-      );
-    } else {
-      onBookLongPress(book.id);
+    try {
+      console.log('Moving book to existing collection:', bookToMove.id, 'to category:', targetCategoryId);
+      
+      const success = await onBookCategoryChange(bookToMove.id, targetCategoryId);
+      
+      if (success !== false) {
+        console.log('Successfully moved book to existing collection');
+        closeAllModals();
+      } else {
+        throw new Error('Move operation failed');
+      }
+    } catch (error) {
+      console.error('Error moving book to existing collection:', error);
+      Alert.alert('Error', 'Failed to move book to collection');
+      setIsProcessing(false);
     }
+  };
+
+  // Handle creating new collection and moving book
+  const handleCreateNewCollection = async () => {
+    if (isProcessing || !newCategoryName.trim() || !bookToMove) {
+      return;
+    }
+
+    const collectionName = newCategoryName.trim();
+    setIsProcessing(true);
+
+    try {
+      console.log('Creating new collection:', collectionName);
+      
+      // Create the new collection
+      const newCategory = await onCreateCategory(collectionName);
+      
+      if (!newCategory || !newCategory.id) {
+        throw new Error('Failed to create collection - no category returned');
+      }
+
+      console.log('Created collection:', newCategory);
+
+      // Move the book to the new collection
+      console.log('Moving book to new collection:', bookToMove.id, 'to category:', newCategory.id);
+      
+      const success = await onBookCategoryChange(bookToMove.id, newCategory.id);
+      
+      if (success !== false) {
+        console.log('Successfully created collection and moved book');
+        closeAllModals();
+      } else {
+        throw new Error('Failed to move book to new collection');
+      }
+    } catch (error) {
+      console.error('Error creating collection and moving book:', error);
+      Alert.alert('Error', 'Failed to create collection and move book');
+      setIsProcessing(false);
+    }
+  };
+
+  // Show new collection input
+  const showNewCollectionInput = () => {
+    if (isProcessing) return;
+    setShowNewCategoryInput(true);
+  };
+
+  // Hide new collection input
+  const hideNewCollectionInput = () => {
+    setNewCategoryName('');
+    setShowNewCategoryInput(false);
   };
 
   const renderBook = (book) => {
     const progress = getProgressPercentage(book);
     const coverColors = generateBookCover(book);
-    const isSelected = selectedBook === book.id;
     const cleanTitle = book.name.replace(/\.(pdf|epub)$/i, '');
     const isUploading = book.isUploading || uploadingBooks.has(book.id);
     const uploadProgress = uploadingBooks.get(book.id) || 0;
     const isNewlyUploaded = book.isNewlyUploaded && !isUploading;
 
     return (
-      <View style={styles.bookContainer}>
+      <View style={styles.bookContainer} key={book.id}>
         <TouchableOpacity
           style={[
             styles.book,
-            isSelected && styles.bookSelected,
             isDarkMode && styles.bookDark,
             isUploading && styles.bookUploading
           ]}
-          onPress={() => !isUploading && onBookPress(book)}
-          onLongPress={() => !isUploading && handleBookAction(book)}
+          onPress={() => !isUploading && !isProcessing && onBookPress(book)}
+          onLongPress={(event) => !isUploading && !isProcessing && showBookOptionsOverlay(book, event)}
           activeOpacity={isUploading ? 1 : 0.8}
-          disabled={isUploading}
+          disabled={isUploading || isProcessing}
         >
           {isUploading && !book.coverImage ? (
             <View style={styles.bookCover}>
@@ -236,10 +352,6 @@ const BookShelf = ({
               )}
             </LinearGradient>
           )}
-          
-          {isSelected && !isUploading && (
-            <View style={styles.bookActionIndicator} />
-          )}
         </TouchableOpacity>
         
         <View style={styles.bookInfo}>
@@ -271,25 +383,105 @@ const BookShelf = ({
     );
   };
 
+  const renderBookOptionsOverlay = () => {
+    if (!showBookOptions || !selectedBook) return null;
+
+    const cleanTitle = selectedBook.name.replace(/\.(pdf|epub)$/i, '');
+    const truncatedTitle = truncateTitle(cleanTitle, MAX_OPTION_TITLE_LENGTH);
+
+    return (
+      <Modal
+        visible={showBookOptions}
+        transparent={true}
+        animationType="none"
+        onRequestClose={hideBookOptions}
+      >
+        <TouchableWithoutFeedback onPress={hideBookOptions}>
+          <View style={styles.optionsOverlay}>
+            <TouchableWithoutFeedback>
+              <Animated.View
+                style={[
+                  styles.optionsContainer,
+                  isDarkMode && styles.optionsContainerDark,
+                  {
+                    left: Math.max(20, Math.min(optionsPosition.x, screenWidth - 220)),
+                    top: Math.max(100, optionsPosition.y),
+                    opacity: optionsOpacity,
+                    transform: [{ scale: optionsScale }],
+                  }
+                ]}
+              >
+                <View style={styles.optionsHeader}>
+                  <Text 
+                    style={[styles.optionsTitle, isDarkMode && styles.optionsTitleDark]}
+                  >
+                    {truncatedTitle}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.optionItem, isDarkMode && styles.optionItemDark]}
+                  onPress={handleMoveToCollection}
+                  activeOpacity={0.7}
+                  disabled={isProcessing}
+                >
+                  <Text style={[
+                    styles.optionText, 
+                    isDarkMode && styles.optionTextDark,
+                    isProcessing && styles.optionTextDisabled
+                  ]}>
+                    Move to Collection
+                  </Text>
+                  <Ionicons 
+                    name="folder-outline" 
+                    size={20} 
+                    color={isProcessing ? '#9ca3af' : isDarkMode ? '#9ca3af' : '#6b7280'} 
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.optionItem, styles.optionItemDelete, isDarkMode && styles.optionItemDeleteDark]}
+                  onPress={handleDeleteBook}
+                  activeOpacity={0.7}
+                  disabled={isProcessing}
+                >
+                  <Text style={[
+                    styles.optionText, 
+                    styles.optionTextDelete,
+                    isProcessing && styles.optionTextDisabled
+                  ]}>
+                    Delete
+                  </Text>
+                  <Ionicons 
+                    name="trash-outline" 
+                    size={20} 
+                    color={isProcessing ? '#9ca3af' : '#ef4444'} 
+                  />
+                </TouchableOpacity>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    );
+  };
+
   const renderShelf = (shelf) => {
+    // Only render shelves that have books, except for the default "All" shelf
+    if (shelf.books.length === 0 && !shelf.isDefault) {
+      return null;
+    }
+
     return (
       <View key={shelf.id} style={styles.shelfContainer}>
         <View style={styles.shelfHeader}>
           <Text style={[styles.shelfTitle, isDarkMode && styles.shelfTitleDark]}>
             {shelf.title}
           </Text>
-          {!shelf.isDefault && (
-            <TouchableOpacity
-              style={styles.deleteCategoryButton}
-              onPress={() => handleDeleteCategory(shelf.id, shelf.title)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons 
-                name="trash-outline" 
-                size={18} 
-                color={isDarkMode ? '#ef4444' : '#dc2626'} 
-              />
-            </TouchableOpacity>
+          {!shelf.isDefault && shelf.books.length > 0 && (
+            <Text style={[styles.bookCount, isDarkMode && styles.bookCountDark]}>
+              {shelf.books.length} {shelf.books.length === 1 ? 'book' : 'books'}
+            </Text>
           )}
         </View>
         
@@ -299,13 +491,9 @@ const BookShelf = ({
           contentContainerStyle={styles.shelfContent}
           scrollEventThrottle={16}
         >
-          {shelf.books.map((book) => (
-            <View key={book.id}>
-              {renderBook(book)}
-            </View>
-          ))}
+          {shelf.books.map((book) => renderBook(book))}
           
-          {shelf.books.length === 0 && (
+          {shelf.books.length === 0 && shelf.isDefault && (
             <View style={[styles.emptyShelf, isDarkMode && styles.emptyShelfDark]}>
               <Ionicons 
                 name="book-outline" 
@@ -313,12 +501,167 @@ const BookShelf = ({
                 color={isDarkMode ? '#374151' : '#d1d5db'} 
               />
               <Text style={[styles.emptyShelfText, isDarkMode && styles.emptyShelfTextDark]}>
-                Empty
+                No books yet
               </Text>
             </View>
           )}
         </ScrollView>
       </View>
+    );
+  };
+
+  const renderMoveToCollectionModal = () => {
+    if (!showMoveModal || !bookToMove) return null;
+
+    return (
+      <Modal
+        visible={showMoveModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={closeAllModals}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, isDarkMode && styles.modalContentDark]}>
+            <Text style={[styles.modalTitle, isDarkMode && styles.modalTitleDark]}>
+              Move to Collection
+            </Text>
+            
+            {!showNewCategoryInput ? (
+              <>
+                <View style={styles.categoryList}>
+                  {shelves.map(shelf => (
+                    <TouchableOpacity
+                      key={shelf.id}
+                      style={[
+                        styles.categoryItem,
+                        isDarkMode && styles.categoryItemDark,
+                        bookToMove?.categoryId === shelf.id && styles.categoryItemSelected,
+                        bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryItemSelectedDark
+                      ]}
+                      onPress={() => handleMoveToExistingCollection(shelf.id)}
+                      disabled={isProcessing}
+                    >
+                      <Text style={[
+                        styles.categoryItemText,
+                        isDarkMode && styles.categoryItemTextDark,
+                        bookToMove?.categoryId === shelf.id && styles.categoryItemTextSelected,
+                        bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryItemTextSelectedDark,
+                        isProcessing && styles.categoryItemTextDisabled
+                      ]}>
+                        {shelf.title}
+                      </Text>
+                      
+                      {bookToMove?.categoryId === shelf.id && (
+                        <Ionicons 
+                          name="checkmark" 
+                          size={20} 
+                          color="#3b82f6" 
+                        />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryItem,
+                      styles.newCategoryItem,
+                      isDarkMode && styles.categoryItemDark,
+                    ]}
+                    onPress={showNewCollectionInput}
+                    disabled={isProcessing}
+                  >
+                    <View style={styles.newCategoryContent}>
+                      <Ionicons 
+                        name="add-circle-outline" 
+                        size={20} 
+                        color={isProcessing ? '#9ca3af' : '#3b82f6'} 
+                      />
+                      <Text style={[
+                        styles.newCategoryText, 
+                        isDarkMode && styles.newCategoryTextDark,
+                        isProcessing && styles.newCategoryTextDisabled
+                      ]}>
+                        Create New Collection
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                
+                <TouchableOpacity 
+                  style={[
+                    styles.modalButton, 
+                    styles.modalButtonCancel, 
+                    styles.modalButtonFull,
+                    isProcessing && styles.modalButtonDisabled
+                  ]}
+                  onPress={closeAllModals}
+                  disabled={isProcessing}
+                >
+                  <Text style={[
+                    styles.modalButtonTextCancel,
+                    isProcessing && styles.modalButtonTextDisabled
+                  ]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={[
+                    styles.modalInput, 
+                    isDarkMode && styles.modalInputDark,
+                    isProcessing && styles.modalInputDisabled
+                  ]}
+                  placeholder="Collection name"
+                  placeholderTextColor={isDarkMode ? '#6b7280' : '#9ca3af'}
+                  value={newCategoryName}
+                  onChangeText={setNewCategoryName}
+                  autoFocus
+                  onSubmitEditing={handleCreateNewCollection}
+                  editable={!isProcessing}
+                />
+                
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity 
+                    style={[
+                      styles.modalButton, 
+                      styles.modalButtonCancel,
+                      isProcessing && styles.modalButtonDisabled
+                    ]}
+                    onPress={hideNewCollectionInput}
+                    disabled={isProcessing}
+                  >
+                    <Text style={[
+                      styles.modalButtonTextCancel,
+                      isProcessing && styles.modalButtonTextDisabled
+                    ]}>
+                      Back
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[
+                      styles.modalButton, 
+                      styles.modalButtonCreate,
+                      (!newCategoryName.trim() || isProcessing) && styles.modalButtonDisabled
+                    ]}
+                    onPress={handleCreateNewCollection}
+                    disabled={!newCategoryName.trim() || isProcessing}
+                  >
+                    <Text style={[
+                      styles.modalButtonTextCreate,
+                      (!newCategoryName.trim() || isProcessing) && styles.modalButtonTextDisabled
+                    ]}>
+                      {isProcessing ? 'Creating...' : 'Create & Move'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     );
   };
 
@@ -329,130 +672,11 @@ const BookShelf = ({
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {shelves.map((shelf) => renderShelf(shelf))}
-        
-        <TouchableOpacity 
-          style={[styles.addCategoryButton, isDarkMode && styles.addCategoryButtonDark]}
-          onPress={() => setShowCreateCategory(true)}
-          activeOpacity={0.7}
-        >
-          <Ionicons 
-            name="add-circle-outline" 
-            size={24} 
-            color={isDarkMode ? '#9ca3af' : '#6b7280'} 
-          />
-          <Text style={[styles.addCategoryText, isDarkMode && styles.addCategoryTextDark]}>
-            Create Category
-          </Text>
-        </TouchableOpacity>
+        {shelves.map((shelf) => renderShelf(shelf)).filter(Boolean)}
       </ScrollView>
 
-      {/* Create Category Modal */}
-      <Modal
-        visible={showCreateCategory}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowCreateCategory(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={[styles.modalContent, isDarkMode && styles.modalContentDark]}>
-            <Text style={[styles.modalTitle, isDarkMode && styles.modalTitleDark]}>
-              New Category
-            </Text>
-            
-            <TextInput
-              style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
-              placeholder="Category name"
-              placeholderTextColor={isDarkMode ? '#6b7280' : '#9ca3af'}
-              value={newCategoryName}
-              onChangeText={setNewCategoryName}
-              autoFocus
-              onSubmitEditing={handleCreateCategorySubmit}
-            />
-            
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => {
-                  setNewCategoryName('');
-                  setShowCreateCategory(false);
-                }}
-              >
-                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalButtonCreate]}
-                onPress={handleCreateCategorySubmit}
-              >
-                <Text style={styles.modalButtonTextCreate}>Create</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Move Book Modal */}
-      <Modal
-        visible={showMoveModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowMoveModal(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={[styles.modalContent, isDarkMode && styles.modalContentDark]}>
-            <Text style={[styles.modalTitle, isDarkMode && styles.modalTitleDark]}>
-              Move to Category
-            </Text>
-            
-            <View style={styles.categoryList}>
-              {shelves.map(shelf => (
-                <TouchableOpacity
-                  key={shelf.id}
-                  style={[
-                    styles.categoryItem,
-                    isDarkMode && styles.categoryItemDark,
-                    bookToMove?.categoryId === shelf.id && styles.categoryItemSelected,
-                    bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryItemSelectedDark
-                  ]}
-                  onPress={() => {
-                    if (bookToMove) {
-                      onBookCategoryChange(bookToMove.id, shelf.id);
-                      setShowMoveModal(false);
-                      setBookToMove(null);
-                      onBookLongPress(null);
-                    }
-                  }}
-                >
-                  <Text style={[
-                    styles.categoryItemText,
-                    isDarkMode && styles.categoryItemTextDark,
-                    bookToMove?.categoryId === shelf.id && styles.categoryItemTextSelected,
-                    bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryItemTextSelectedDark
-                  ]}>
-                    {shelf.title}
-                  </Text>
-                  
-                  {bookToMove?.categoryId === shelf.id && (
-                    <Ionicons name="checkmark" size={20} color="#3b82f6" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-            
-            <TouchableOpacity 
-              style={[styles.modalButton, styles.modalButtonCancel, styles.modalButtonFull]}
-              onPress={() => {
-                setShowMoveModal(false);
-                setBookToMove(null);
-                onBookLongPress(null);
-              }}
-            >
-              <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {renderBookOptionsOverlay()}
+      {renderMoveToCollectionModal()}
     </>
   );
 };
@@ -466,13 +690,12 @@ const styles = StyleSheet.create({
   },
   shelfContainer: {
     marginBottom: 36,
-    paddingTop: 12, // Added padding to prevent delete button cutoff
   },
   shelfHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    paddingHorizontal: 24, // Aligned with header
+    paddingHorizontal: 24,
     marginBottom: 12,
   },
   shelfTitle: {
@@ -484,17 +707,23 @@ const styles = StyleSheet.create({
   shelfTitleDark: {
     color: '#ffffff',
   },
-  deleteCategoryButton: {
-    padding: 6,
+  bookCount: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '400',
+    fontFamily: 'System',
+  },
+  bookCountDark: {
+    color: '#9ca3af',
   },
   shelfContent: {
-    paddingLeft: 24, // Aligned with header
+    paddingLeft: 24,
     paddingRight: 4,
   },
   emptyShelf: {
     width: BOOK_WIDTH,
     height: BOOK_HEIGHT,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 2,
     borderStyle: 'dashed',
     borderColor: '#e5e7eb',
@@ -518,7 +747,7 @@ const styles = StyleSheet.create({
   },
   bookContainer: {
     alignItems: 'center',
-    marginRight: 8, // Reduced from 16 to 8
+    marginRight: 8,
   },
   book: {
     width: BOOK_WIDTH,
@@ -534,9 +763,6 @@ const styles = StyleSheet.create({
   },
   bookUploading: {
     opacity: 1,
-  },
-  bookSelected: {
-    transform: [{ scale: 0.95 }],
   },
   bookDark: {
     shadowOpacity: 0.3,
@@ -595,15 +821,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: 'System',
   },
-  bookActionIndicator: {
-    position: 'absolute',
-    bottom: -4,
-    left: BOOK_WIDTH / 2 - 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#3b82f6',
-  },
   bookInfo: {
     width: BOOK_WIDTH,
     marginTop: 8,
@@ -648,27 +865,80 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#3b82f6',
   },
-  addCategoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  addCategoryButtonDark: {
+
+  // Book Options Overlay
+  optionsOverlay: {
+    flex: 1,
     backgroundColor: 'transparent',
   },
-  addCategoryText: {
+  optionsContainer: {
+    position: 'absolute',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+    minWidth: 200,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  optionsContainerDark: {
+    backgroundColor: '#1a1a1a',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  optionsHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  optionsTitle: {
     fontSize: 16,
-    color: '#6b7280',
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#000000',
     fontFamily: 'System',
   },
-  addCategoryTextDark: {
+  optionsTitleDark: {
+    color: '#ffffff',
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f3f4f6',
+  },
+  optionItemDark: {
+    borderBottomColor: '#374151',
+  },
+  optionItemDelete: {
+    borderBottomWidth: 0,
+  },
+  optionItemDeleteDark: {
+    borderBottomWidth: 0,
+  },
+  optionText: {
+    fontSize: 15,
+    color: '#1f2937',
+    fontWeight: '400',
+    fontFamily: 'System',
+  },
+  optionTextDark: {
+    color: '#f9fafb',
+  },
+  optionTextDelete: {
+    color: '#ef4444',
+  },
+  optionTextDisabled: {
     color: '#9ca3af',
   },
+
+  // Modal styles
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -718,6 +988,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     backgroundColor: '#0f0f0f',
   },
+  modalInputDisabled: {
+    opacity: 0.5,
+  },
   modalButtons: {
     flexDirection: 'row',
     gap: 12,
@@ -739,6 +1012,10 @@ const styles = StyleSheet.create({
   modalButtonCreate: {
     backgroundColor: '#3b82f6',
   },
+  modalButtonDisabled: {
+    backgroundColor: '#9ca3af',
+    opacity: 0.5,
+  },
   modalButtonTextCancel: {
     fontSize: 16,
     color: '#6b7280',
@@ -751,8 +1028,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'System',
   },
+  modalButtonTextDisabled: {
+    color: '#d1d5db',
+  },
   categoryList: {
     marginBottom: 16,
+    maxHeight: 300,
   },
   categoryItem: {
     flexDirection: 'row',
@@ -789,6 +1070,32 @@ const styles = StyleSheet.create({
   },
   categoryItemTextSelectedDark: {
     color: '#60a5fa',
+  },
+  categoryItemTextDisabled: {
+    color: '#9ca3af',
+  },
+  newCategoryItem: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#3b82f6',
+    backgroundColor: 'transparent',
+  },
+  newCategoryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  newCategoryText: {
+    fontSize: 16,
+    color: '#3b82f6',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  newCategoryTextDark: {
+    color: '#60a5fa',
+  },
+  newCategoryTextDisabled: {
+    color: '#9ca3af',
   },
 });
 

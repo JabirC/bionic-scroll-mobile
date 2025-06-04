@@ -102,6 +102,7 @@ export class StorageManager {
     }
   }
 
+  // In src/utils/storageManager.js - update the createCategory method
   async createCategory(name) {
     try {
       const categories = await this.getCategories();
@@ -114,7 +115,8 @@ export class StorageManager {
       categories.push(newCategory);
       await AsyncStorage.setItem(this.categoriesKey, JSON.stringify(categories));
       
-      return newCategory;
+      console.log('StorageManager: Created category:', newCategory);
+      return newCategory; // Return the full object, not just the ID
     } catch (error) {
       console.error('Error creating category:', error);
       throw new Error('Failed to create category');
