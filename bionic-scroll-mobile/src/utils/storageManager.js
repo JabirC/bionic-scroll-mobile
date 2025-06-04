@@ -76,16 +76,21 @@ export class StorageManager {
 
   async updateBookCategory(bookId, categoryId) {
     try {
+      console.log('StorageManager: Updating book category', bookId, 'to', categoryId);
+      
       const library = await this.getLibrary();
       const bookIndex = library.findIndex(book => book.id === bookId);
       
       if (bookIndex !== -1) {
         library[bookIndex].categoryId = categoryId;
         await AsyncStorage.setItem(this.libraryKey, JSON.stringify(library));
+        
+        console.log('StorageManager: Successfully updated book category');
         return true;
+      } else {
+        console.error('StorageManager: Book not found:', bookId);
+        return false;
       }
-      
-      return false;
     } catch (error) {
       console.error('Error updating book category:', error);
       return false;
@@ -102,7 +107,7 @@ export class StorageManager {
     }
   }
 
-  // In src/utils/storageManager.js - update the createCategory method
+  // src/utils/storageManager.js (updated createCategory method)
   async createCategory(name) {
     try {
       const categories = await this.getCategories();
@@ -116,13 +121,40 @@ export class StorageManager {
       await AsyncStorage.setItem(this.categoriesKey, JSON.stringify(categories));
       
       console.log('StorageManager: Created category:', newCategory);
-      return newCategory; // Return the full object, not just the ID
+      return newCategory; // Return the full category object, not just the ID
     } catch (error) {
       console.error('Error creating category:', error);
       throw new Error('Failed to create category');
     }
   }
 
+  async createRecentCategory() {
+    try {
+      const categories = await this.getCategories();
+      
+      // Check if Recent category already exists
+      const existingRecent = categories.find(cat => cat.id === 'recent');
+      if (existingRecent) {
+        return existingRecent;
+      }
+      
+      const recentCategory = {
+        id: 'recent',
+        name: 'Recent',
+        createdAt: new Date().toISOString()
+      };
+      
+      categories.unshift(recentCategory); // Add at beginning
+      await AsyncStorage.setItem(this.categoriesKey, JSON.stringify(categories));
+      
+      console.log('StorageManager: Created Recent category:', recentCategory);
+      return recentCategory;
+    } catch (error) {
+      console.error('Error creating Recent category:', error);
+      throw new Error('Failed to create Recent category');
+    }
+  }
+  
   async deleteCategory(categoryId) {
     try {
       const categories = await this.getCategories();
