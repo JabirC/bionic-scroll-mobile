@@ -4,7 +4,7 @@ import { Dimensions } from 'react-native';
 export class TextProcessor {
   constructor() {
     this.fontSize = 22;
-    this.lineHeight = 1.7;
+    this.lineHeight = 1.6;
     this.charWidth = 0.55;
     this.marginBottom = 24;
     
@@ -21,8 +21,8 @@ export class TextProcessor {
   calculateSectionCapacity() {
     const safeAreaTop = 80;
     const safeAreaBottom = 120;
-    const horizontalPadding = 56;
-    const maxContentWidth = Math.min(this.screenWidth - horizontalPadding, 600);
+    const horizontalPadding = 32;
+    const maxContentWidth = Math.min(this.screenWidth - horizontalPadding, 650);
     
     const availableHeight = this.screenHeight - safeAreaTop - safeAreaBottom;
     const availableWidth = maxContentWidth;
@@ -46,6 +46,13 @@ export class TextProcessor {
     let totalHeight = 0;
 
     paragraphs.forEach((paragraph, index) => {
+      if (this.isHeading(paragraph)) {
+        const level = this.getHeadingLevel(paragraph);
+        const headingMultiplier = level === 1 ? 1.8 : level === 2 ? 1.6 : level === 3 ? 1.4 : 1.2;
+        totalHeight += (this.fontSize * headingMultiplier * this.lineHeight) + (this.fontSize * 1.5);
+        return;
+      }
+
       const words = paragraph.split(/\s+/);
       let currentLineLength = 0;
       let lines = 1;
@@ -64,23 +71,30 @@ export class TextProcessor {
       totalHeight += paragraphHeight;
       
       if (index < paragraphs.length - 1) {
-        totalHeight += this.fontSize * 1.2;
+        totalHeight += this.fontSize * 1.1;
       }
     });
 
     return totalHeight;
   }
 
+  isHeading(text) {
+    return /^<h[1-6]>/.test(text);
+  }
+
+  getHeadingLevel(text) {
+    const match = text.match(/^<h([1-6])>/);
+    return match ? parseInt(match[1]) : 1;
+  }
+
   splitTextIntoScreenSections(text) {
     const { maxChars, availableHeight } = this.calculateSectionCapacity();
     
-    // Preserve more of the original formatting
     const normalizedText = text
       .replace(/\r\n/g, '\n')
-      .replace(/\n{4,}/g, '\n\n\n') // Keep up to 3 line breaks
+      .replace(/\n{4,}/g, '\n\n\n')
       .trim();
     
-    // Split on double line breaks but preserve intentional spacing
     const paragraphs = normalizedText.split(/\n\s*\n/).filter(p => p.trim());
     const sections = [];
     let currentSection = '';
@@ -121,14 +135,14 @@ export class TextProcessor {
           currentCharIndex += chunk.length + 2;
         }
       } else {
-        const newHeight = currentHeight + paragraphHeight + (currentSection ? this.fontSize * 1.2 : 0);
+        const newHeight = currentHeight + paragraphHeight + (currentSection ? this.fontSize * 1.1 : 0);
         
         if (newHeight > availableHeight * 0.85 && currentSection.trim()) {
           sections.push({
             content: currentSection.trim(),
             estimatedHeight: currentHeight,
             id: sections.length,
-            startCharIndex: currentCharIndex -currentSection.length,
+            startCharIndex: currentCharIndex - currentSection.length,
             endCharIndex: currentCharIndex,
             characterCount: currentSection.length
           });
@@ -204,7 +218,6 @@ export class TextProcessor {
   }
 
   splitIntoSentences(text) {
-    // Improved sentence splitting that preserves more context
     const sentences = [];
     const regex = /[.!?]+[\s'"]*(?=[A-Z\n])|[.!?]+$/g;
     let lastIndex = 0;
@@ -212,7 +225,7 @@ export class TextProcessor {
 
     while ((match = regex.exec(text)) !== null) {
       const sentence = text.substring(lastIndex, match.index + match[0].length).trim();
-      if (sentence && sentence.length > 3) { // Avoid very short segments
+      if (sentence && sentence.length > 3) {
         sentences.push(sentence);
       }
       lastIndex = match.index + match[0].length;
@@ -309,17 +322,19 @@ export class TextProcessor {
   }
 
   formatForReading(text) {
-    // Better preservation of formatting and line breaks
     return text
-      .split(/\n\s*\n/) // Split on paragraph breaks
+      .split(/\n\s*\n/)
       .filter(p => p.trim())
       .map(p => {
-        // Preserve intentional line breaks within paragraphs
-        const processedParagraph = p
-          .split('\n')
-          .map(line => line.trim())
-          .join('<br/>');
-        return `<p>${processedParagraph}</p>`;
+        if (this.isHeading(p)) {
+          return p.replace(/<(h[1-6])>(.*?)<\/h[1-6]>/g, '<$1>$2</$1>');
+        } else {
+          const processedParagraph = p
+            .split('\n')
+            .map(line => line.trim())
+            .join('<br/>');
+          return `<p>${processedParagraph}</p>`;
+        }
       })
       .join('');
   }

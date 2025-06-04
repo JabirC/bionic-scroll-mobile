@@ -3,35 +3,22 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useColorScheme, StatusBar } from 'react-native';
+import { StatusBar } from 'react-native';
 
 import LibraryScreen from '../screens/LibraryScreen';
 import ReadingScreen from '../screens/ReadingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SplashScreenComponent from '../components/SplashScreen';
 import FloatingTabBar from '../components/FloatingTabBar';
-import { SettingsManager } from '../utils/settingsManager';
+import { SettingsProvider } from '../contexts/SettingsContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const MainTabs = () => {
-  const systemColorScheme = useColorScheme();
-  const [isDarkMode, setIsDarkMode] = React.useState(systemColorScheme === 'dark');
-  const settingsManager = new SettingsManager();
-
-  React.useEffect(() => {
-    loadTheme();
-  }, []);
-
-  const loadTheme = async () => {
-    const settings = await settingsManager.getSettings();
-    setIsDarkMode(settings.isDarkMode);
-  };
-
   return (
     <Tab.Navigator
-      tabBar={(props) => <FloatingTabBar {...props} isDarkMode={isDarkMode} />}
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
       }}
@@ -82,14 +69,15 @@ const AppNavigator = () => {
   }
 
   return (
-    <NavigationContainer>
-      <StatusBar 
-        style="auto"
-        backgroundColor="transparent"
-        translucent
-      />
-      <LibraryStack />
-    </NavigationContainer>
+    <SettingsProvider>
+      <NavigationContainer>
+        <StatusBar 
+          backgroundColor="transparent"
+          translucent
+        />
+        <LibraryStack />
+      </NavigationContainer>
+    </SettingsProvider>
   );
 };
 

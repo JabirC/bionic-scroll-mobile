@@ -9,38 +9,19 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import { SettingsManager } from '../utils/settingsManager';
+import { useSettings } from '../contexts/SettingsContext';
 
 const { width } = Dimensions.get('window');
 
 const FloatingTabBar = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const settingsManager = new SettingsManager();
-
-  useFocusEffect(
-    React.useCallback(() => {
-      loadTheme();
-      
-      const interval = setInterval(loadTheme, 100);
-      
-      return () => {
-        clearInterval(interval);
-      };
-    }, [])
-  );
-
-  const loadTheme = async () => {
-    const settings = await settingsManager.getSettings();
-    setIsDarkMode(settings.isDarkMode);
-  };
+  const { settings } = useSettings();
 
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 15 }]}>
       <View style={[
         styles.tabContainer,
-        isDarkMode && styles.tabContainerDark
+        settings.isDarkMode && styles.tabContainerDark
       ]}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -78,7 +59,7 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
                 styles.tab,
                 isFocused && [
                   styles.tabFocused,
-                  isDarkMode ? styles.tabFocusedDark : styles.tabFocusedLight
+                  settings.isDarkMode ? styles.tabFocusedDark : styles.tabFocusedLight
                 ]
               ]}
             >
@@ -87,8 +68,8 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
                 size={isFocused ? 24 : 22}
                 color={
                   isFocused 
-                    ? (isDarkMode ? '#000000' : '#ffffff')
-                    : isDarkMode 
+                    ? (settings.isDarkMode ? '#000000' : '#ffffff')
+                    : settings.isDarkMode 
                       ? '#666666' 
                       : '#999999'
                 }

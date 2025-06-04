@@ -142,11 +142,6 @@ const ReadingScreen = ({ navigation, route }) => {
   };
 
   const toggleUI = () => {
-    if (showSectionCarousel) {
-      hideSectionCarousel();
-      return;
-    }
-
     const newShowUI = !showUI;
     setShowUI(newShowUI);
     setShowSectionCarousel(newShowUI);
@@ -270,7 +265,7 @@ const ReadingScreen = ({ navigation, route }) => {
       const isCurrentSection = index === currentSectionIndex;
       const sectionContent = isPageMode 
         ? `Page ${index + 1}`
-        : item.content.replace(/<[^>]*>/g, '').substring(0, 100) + '...';
+        : item.content.replace(/<[^>]*>/g, '').substring(0, 120) + '...';
 
       return (
         <TouchableOpacity
@@ -278,19 +273,10 @@ const ReadingScreen = ({ navigation, route }) => {
             styles.pageItem,
             settings.isDarkMode && styles.pageItemDark,
             isCurrentSection && styles.pageItemActive,
-            isCurrentSection && settings.isDarkMode && styles.pageItemActiveDark
           ]}
           onPress={() => jumpToSection(index)}
           activeOpacity={0.7}
         >
-          <Text style={[
-            styles.pageNumber,
-            settings.isDarkMode && styles.pageNumberDark,
-            isCurrentSection && styles.pageNumberActive,
-            isCurrentSection && settings.isDarkMode && styles.pageNumberActiveDark
-          ]}>
-            {index + 1}
-          </Text>
           <Text 
             style={[
               styles.pagePreview,
@@ -301,6 +287,14 @@ const ReadingScreen = ({ navigation, route }) => {
             numberOfLines={4}
           >
             {sectionContent}
+          </Text>
+          <Text style={[
+            styles.pageNumber,
+            settings.isDarkMode && styles.pageNumberDark,
+            isCurrentSection && styles.pageNumberActive,
+            isCurrentSection && settings.isDarkMode && styles.pageNumberActiveDark
+          ]}>
+            {index + 1}
           </Text>
         </TouchableOpacity>
       );
@@ -443,7 +437,7 @@ const ReadingScreen = ({ navigation, route }) => {
             styles.sectionText, 
             settings.isDarkMode && styles.sectionTextDark
           ]}>
-            {currentSectionIndex + 1} of {sections.length}
+            {showUI ? `${currentSectionIndex + 1} of ${sections.length}` : `${currentSectionIndex + 1}`}
           </Text>
         </Animated.View>
       </SafeAreaView>
@@ -457,7 +451,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   containerDark: {
-    backgroundColor: '#000000',
+    backgroundColor: '#1a1a1a',
   },
   progressBar: {
     height: 3,
@@ -498,7 +492,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 80,
     paddingBottom: 120,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   },
   pageContainer: {
     flex: 1,
@@ -546,7 +540,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   sectionCounter: {
-    paddingBottom: 5,
+    paddingBottom: 15,
   },
   sectionText: {
     fontSize: 14,
@@ -559,70 +553,70 @@ const styles = StyleSheet.create({
   },
   sectionCarouselContainer: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 60,
     left: 0,
     right: 0,
     height: 200,
     zIndex: 999,
-    paddingVertical: 16,
   },
   carouselContent: {
-    paddingHorizontal: 0,
+    paddingHorizontal: 20,
   },
   pageItem: {
     width: 110,
     height: 160,
     marginRight: 12,
     padding: 12,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#e5e5e5',
     justifyContent: 'space-between',
-    marginLeft: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   pageItemDark: {
     backgroundColor: '#1a1a1a',
     borderColor: '#333333',
   },
   pageItemActive: {
-    backgroundColor: '#000000',
-    borderColor: '#000000',
-  },
-  pageItemActiveDark: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff',
-  },
-  pageNumber: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-    textAlign: 'center',
-    fontFamily: 'System',
-  },
-  pageNumberDark: {
-    color: '#ffffff',
-  },
-  pageNumberActive: {
-    color: '#ffffff',
-  },
-  pageNumberActiveDark: {
-    color: '#000000',
+    borderColor: '#3b82f6',
   },
   pagePreview: {
     fontSize: 11,
     color: '#6b7280',
     lineHeight: 14,
     fontFamily: 'System',
+    textAlign: 'left',
   },
   pagePreviewDark: {
     color: '#9ca3af',
   },
   pagePreviewActive: {
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: '#1f2937',
   },
   pagePreviewActiveDark: {
-    color: 'rgba(0, 0, 0, 0.7)',
+    color: '#f3f4f6',
+  },
+  pageNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+    textAlign: 'center',
+    fontFamily: 'System',
+    marginTop: 8,
+  },
+  pageNumberDark: {
+    color: '#ffffff',
+  },
+  pageNumberActive: {
+    color: '#3b82f6',
+  },
+  pageNumberActiveDark: {
+    color: '#3b82f6',
   },
 });
 

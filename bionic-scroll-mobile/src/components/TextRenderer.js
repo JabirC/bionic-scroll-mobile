@@ -13,23 +13,26 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
       <style>
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'San Francisco', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+          font-family: 'SF Pro Rounded', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
           font-size: ${fontSize}px;
           line-height: 1.6;
           margin: 0;
           padding: 8px;
           padding-bottom: 40px;
-          background-color: ${isDarkMode ? '#000000' : '#ffffff'};
+          background-color: ${isDarkMode ? '#1a1a1a' : '#ffffff'};
           color: ${isDarkMode ? '#f3f4f6' : '#1a1a1a'};
           overflow-x: hidden;
           min-height: 100vh;
           box-sizing: border-box;
           font-weight: 400;
           letter-spacing: 0.2px;
+          text-rendering: optimizeLegibility;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
         
         .content {
-          max-width: 100%;
+          max-width: 650px;
           width: 100%;
           margin: 0 auto;
         }
@@ -52,8 +55,21 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
           margin-bottom: 0;
         }
         
-        b {
+        h1, h2, h3, h4, h5, h6 {
           font-weight: 600;
+          color: ${isDarkMode ? '#ffffff' : '#000000'};
+          margin: ${fontSize * 1.5}px 0 ${fontSize * 0.8}px 0;
+          text-indent: 0;
+        }
+        
+        h1 { font-size: ${fontSize * 1.8}px; }
+        h2 { font-size: ${fontSize * 1.6}px; }
+        h3 { font-size: ${fontSize * 1.4}px; }
+        h4 { font-size: ${fontSize * 1.2}px; }
+        h5, h6 { font-size: ${fontSize * 1.1}px; }
+        
+        b, strong {
+          font-weight: ${isDarkMode ? '800' : '700'};
           color: ${isDarkMode ? '#ffffff' : '#000000'};
         }
         

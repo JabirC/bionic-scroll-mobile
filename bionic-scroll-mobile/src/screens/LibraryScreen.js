@@ -1,5 +1,5 @@
 // src/screens/LibraryScreen.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Alert,
   ActivityIndicator,
   TouchableOpacity,
+  Animated,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,51 +15,60 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { StorageManager } from '../utils/storageManager';
-import { SettingsManager } from '../utils/settingsManager';
 import { PDFExtractor } from '../utils/pdfExtractor';
 import { EPUBExtractor } from '../utils/epubExtractor';
+import { useSettings } from '../contexts/SettingsContext';
 import BookShelf from '../components/BookShelf';
 
 const LibraryScreen = ({ navigation }) => {
   const [books, setBooks] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadingBooks, setUploadingBooks] = useState(new Map());
-  const [settings, setSettings] = useState({
-    isDarkMode: false,
-    fontSize: 22,
-    bionicMode: false,
-  });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [isAddMode, setIsAddMode] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
 
+  const { settings } = useSettings();
+  const backgroundColorAnim = useRef(new Animated.Value(0)).current;
   const storageManager = new StorageManager();
-  const settingsManager = new SettingsManager();
   const pdfExtractor = new PDFExtractor();
   const epubExtractor = new EPUBExtractor();
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      loadBooksAndCategories();
     }, [])
   );
 
-  const loadData = async () => {
-    await Promise.all([loadBooks(), loadSettings()]);
-  };
+  useEffect(() => {
+    Animated.timing(backgroundColorAnim, {
+      toValue: settings.isDarkMode ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [settings.isDarkMode]);
 
-  const loadBooks = async () => {
-    setIsLoading(true);
+  const loadBooksAndCategories = async () => {
+    if (isInitialLoad) {
+      setIsLoading(true);
+    }
+    
     try {
-      const library = await storageManager.getLibrary();
+      const [library, userCategories] = await Promise.all([
+        storageManager.getLibrary(),
+        storageManager.getCategories()
+      ]);
+      
       setBooks(library.sort((a, b) => new Date(b.lastRead || b.dateAdded) - new Date(a.lastRead || a.dateAdded)));
+      setCategories(userCategories);
     } catch (error) {
-      console.error('Error loading books:', error);
+      console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
+      setIsInitialLoad(false);
     }
-  };
-
-  const loadSettings = async () => {
-    const userSettings = await settingsManager.getSettings();
-    setSettings(userSettings);
   };
 
   const handleBookPress = async (book) => {
@@ -66,8 +76,15 @@ const LibraryScreen = ({ navigation }) => {
       return;
     }
 
+    setSelectedBook(null);
+
     try {
       const bookData = await storageManager.getBookContent(book.id);
+      
+      if (book.isNewlyUploaded) {
+        await storageManager.markBookAsOpened(book.id);
+      }
+      
       navigation.navigate('Reading', { 
         book, 
         bookData
@@ -89,7 +106,8 @@ const LibraryScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               await storageManager.deleteBook(bookId);
-              loadBooks();
+              setSelectedBook(null);
+              loadBooksAndCategories();
             } catch (error) {
               Alert.alert('Error', 'Could not remove book');
             }
@@ -103,7 +121,13 @@ const LibraryScreen = ({ navigation }) => {
     setUploadingBooks(prev => {
       const newMap = new Map(prev);
       if (progress >= 100) {
-        newMap.delete(tempId);
+        setTimeout(() => {
+          setUploadingBooks(current => {
+            const updatedMap = new Map(current);
+            updatedMap.delete(tempId);
+            return updatedMap;
+          });
+        }, 300);
       } else {
         newMap.set(tempId, progress);
       }
@@ -111,7 +135,14 @@ const LibraryScreen = ({ navigation }) => {
     });
   };
 
-  const handleUploadPress = async () => {
+  const handleAddModeToggle = () => {
+    setIsAddMode(!isAddMode);
+    setSelectedCategory(null);
+  };
+
+  const handleAddBookToCategory = async (categoryId) => {
+    setSelectedCategory(categoryId);
+    
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'application/epub+zip'],
@@ -121,7 +152,7 @@ const LibraryScreen = ({ navigation }) => {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
-        await processFile(file);
+        processFileInBackground(file, categoryId);
       }
     } catch (error) {
       console.error('Document picker error:', error);
@@ -129,10 +160,59 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const processFile = async (file) => {
+  const processFileInBackground = async (file, categoryId = 'all') => {
     const tempId = Date.now().toString();
     
+    const tempBook = {
+      id: tempId,
+      name: file.name,
+      type: file.mimeType,
+      isUploading: true,
+      dateAdded: new Date().toISOString(),
+      coverImage: null,
+      readingPosition: { percentage: 0 },
+      categoryId: categoryId
+    };
+
+    setBooks(prev => {
+      const newBooks = [tempBook, ...prev];
+      return newBooks;
+    });
+    
+    setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
+
+    setTimeout(async () => {
+      try {
+        await processFile(file, tempId, categoryId);
+      } catch (error) {
+        console.error('Background processing error:', error);
+        setBooks(prev => prev.filter(book => book.id !== tempId));
+        setUploadingBooks(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(tempId);
+          return newMap;
+        });
+        Alert.alert('Upload Failed', error.message || 'Failed to process the document');
+      }
+    }, 100);
+  };
+
+  const processFile = async (file, tempId, categoryId) => {
     try {
+      const progressInterval = setInterval(() => {
+        setUploadingBooks(prev => {
+          const current = prev.get(tempId) || 0;
+          if (current >= 95) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          const next = Math.min(current + Math.random() * 20 + 10, 95);
+          const newMap = new Map(prev);
+          newMap.set(tempId, next);
+          return newMap;
+        });
+      }, 300);
+
       let extractionResult;
       
       if (file.mimeType === 'application/pdf') {
@@ -143,33 +223,8 @@ const LibraryScreen = ({ navigation }) => {
         throw new Error('Unsupported file type');
       }
 
-      const tempBook = {
-        id: tempId,
-        name: file.name,
-        type: file.mimeType,
-        isUploading: true,
-        dateAdded: new Date().toISOString(),
-        coverImage: extractionResult.coverImage,
-        readingPosition: { percentage: 0 }
-      };
-
-      setBooks(prev => [tempBook, ...prev]);
-      setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
-
-      const progressInterval = setInterval(() => {
-        setUploadingBooks(prev => {
-          const current = prev.get(tempId) || 0;
-          const next = Math.min(current + Math.random() * 15 + 5, 95);
-          const newMap = new Map(prev);
-          newMap.set(tempId, next);
-          return newMap;
-        });
-      }, 200);
-
-      setTimeout(() => {
-        clearInterval(progressInterval);
-        updateUploadProgress(tempId, 100);
-      }, 2000);
+      clearInterval(progressInterval);
+      updateUploadProgress(tempId, 100);
 
       const wordCount = extractionResult.text 
         ? extractionResult.text.split(/\s+/).length 
@@ -181,6 +236,7 @@ const LibraryScreen = ({ navigation }) => {
           name: file.name,
           size: file.size,
           type: file.mimeType,
+          categoryId: categoryId,
           metadata: {
             uploadedAt: new Date().toISOString(),
             wordCount,
@@ -191,22 +247,32 @@ const LibraryScreen = ({ navigation }) => {
         extractionResult
       );
 
-      setTimeout(() => {
-        setBooks(prev => prev.filter(book => book.id !== tempId));
-        loadBooks();
-      }, 500);
-      
-    } catch (error) {
-      console.error('Error processing file:', error);
-      
-      setBooks(prev => prev.filter(book => book.id !== tempId));
-      setUploadingBooks(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(tempId);
-        return newMap;
+      setBooks(prev => {
+        const newBooks = prev.map(book => 
+          book.id === tempId 
+            ? { 
+                ...book, 
+                id: bookId, 
+                isUploading: false, 
+                coverImage: extractionResult.coverImage,
+                isNewlyUploaded: true 
+              }
+            : book
+        );
+        return newBooks;
       });
       
-      Alert.alert('Upload Failed', error.message || 'Failed to process the document');
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const handleCreateCategory = async (name) => {
+    try {
+      await storageManager.createCategory(name);
+      loadBooksAndCategories();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create category');
     }
   };
 
@@ -230,70 +296,117 @@ const LibraryScreen = ({ navigation }) => {
     return 'Good Night';
   };
 
+  const organizeBooksShelves = () => {
+    const shelves = [];
+    
+    const allBooks = books
+      .filter(book => !book.categoryId || book.categoryId === 'all')
+      .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+    
+    if (allBooks.length > 0 || isAddMode) {
+      shelves.push({ 
+        id: 'all',
+        title: 'All', 
+        books: allBooks,
+        isDefault: true
+      });
+    }
+
+    categories.forEach(category => {
+      const categoryBooks = books
+        .filter(book => book.categoryId === category.id)
+        .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+      
+      if (categoryBooks.length > 0 || isAddMode) {
+        shelves.push({
+          id: category.id,
+          title: category.name,
+          books: categoryBooks,
+          isDefault: false
+        });
+      }
+    });
+
+    return shelves;
+  };
+
+  const backgroundColorInterpolate = backgroundColorAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#ffffff', '#0f0f0f'],
+  });
+
   return (
-    <SafeAreaView 
+    <Animated.View 
       style={[
         styles.container,
-        settings.isDarkMode && styles.containerDark
-      ]} 
-      edges={['top']}
+        { backgroundColor: backgroundColorInterpolate }
+      ]}
     >
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View style={styles.headerText}>
-            <Text style={[styles.greeting, settings.isDarkMode && styles.greetingDark]}>
-              {getGreeting()}
-            </Text>
-            <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
-              {books.length > 0 ? `${books.length} ${books.length === 1 ? 'Book' : 'Books'}` : 'Your Books'}
-            </Text>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerText}>
+              <Text style={[styles.greeting, settings.isDarkMode && styles.greetingDark]}>
+                {getGreeting()}
+              </Text>
+              <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
+                {books.length > 0 ? `${books.length} ${books.length === 1 ? 'Book' : 'Books'}` : 'Your Books'}
+              </Text>
+            </View>
+            
+            <TouchableOpacity
+              style={[
+                styles.addButton,
+                isAddMode && styles.addButtonActive
+              ]}
+              onPress={handleAddModeToggle}
+              activeOpacity={0.7}
+            >
+              <Ionicons 
+                name={isAddMode ? "close" : "add"} 
+                size={40} 
+                color={settings.isDarkMode ? '#ffffff' : '#000000'} 
+              />
+            </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={handleUploadPress}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name="add" 
-              size={28} 
+        </View>
+
+        {books.length > 0 || categories.length > 0 || isAddMode ? (
+          <BookShelf
+            shelves={organizeBooksShelves()}
+            uploadingBooks={uploadingBooks}
+            onBookPress={handleBookPress}
+            onDeleteBook={handleDeleteBook}
+            onCreateCategory={handleCreateCategory}
+            onAddBookToCategory={handleAddBookToCategory}
+            isDarkMode={settings.isDarkMode}
+            selectedBook={selectedBook}
+            onBookLongPress={setSelectedBook}
+            isAddMode={isAddMode}
+          />
+        ) : (
+          !isLoading && renderEmptyState()
+        )}
+        
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator 
+              size="large" 
               color={settings.isDarkMode ? '#ffffff' : '#000000'} 
             />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {books.length > 0 ? (
-        <BookShelf
-          books={books}
-          uploadingBooks={uploadingBooks}
-          onBookPress={handleBookPress}
-          onDeleteBook={handleDeleteBook}
-          isDarkMode={settings.isDarkMode}
-        />
-      ) : (
-        !isLoading && renderEmptyState()
-      )}
-      
-      {isLoading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator 
-            size="large" 
-            color={settings.isDarkMode ? '#ffffff' : '#000000'} 
-          />
-        </View>
-      )}
-    </SafeAreaView>
+          </View>
+        )}
+      </SafeAreaView>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
-  containerDark: {
-    backgroundColor: '#000000',
+  safeArea: {
+    flex: 1,
   },
   header: {
     paddingHorizontal: 24,
@@ -329,10 +442,13 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   addButton: {
-    width: 50,
-    height: 50,
+    width: 60,
+    height: 60,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  addButtonActive: {
+    transform: [{ rotate: '45deg' }],
   },
   emptyState: {
     flex: 1,

@@ -7,41 +7,28 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { SettingsManager } from '../utils/settingsManager';
 import { StorageManager } from '../utils/storageManager';
+import { useSettings } from '../contexts/SettingsContext';
 
 const ProfileScreen = ({ navigation }) => {
-  const [settings, setSettings] = useState({
-    isDarkMode: false,
-    fontSize: 22,
-    bionicMode: false,
-  });
-
-  const settingsManager = new SettingsManager();
+  const { settings, updateSetting } = useSettings();
+  const backgroundColorAnim = React.useRef(new Animated.Value(settings.isDarkMode ? 1 : 0)).current;
   const storageManager = new StorageManager();
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadSettings();
-    }, [])
-  );
-
-  const loadSettings = async () => {
-    const userSettings = await settingsManager.getSettings();
-    setSettings(userSettings);
-  };
-
-  const updateSetting = async (key, value) => {
-    const newSettings = { ...settings, [key]: value };
-    setSettings(newSettings);
-    await settingsManager.saveSetting(key, value);
-  };
+  useEffect(() => {
+    Animated.timing(backgroundColorAnim, {
+      toValue: settings.isDarkMode ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [settings.isDarkMode]);
 
   const handleClearLibrary = () => {
     Alert.alert(
@@ -124,104 +111,108 @@ const ProfileScreen = ({ navigation }) => {
     </View>
   );
 
+  const backgroundColorInterpolate = backgroundColorAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#ffffff', '#0f0f0f'],
+  });
+
   return (
-    <SafeAreaView 
-      style={[styles.container, settings.isDarkMode && styles.containerDark]}
-      edges={['top']}
+    <Animated.View 
+      style={[
+        styles.container,
+        { backgroundColor: backgroundColorInterpolate }
+      ]}
     >
-      <View style={[styles.header, settings.isDarkMode && styles.headerDark]}>
-        <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
-          Settings
-        </Text>
-      </View>
-
-      <View style={styles.content}>
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
-            Reading Preferences
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
+            Settings
           </Text>
-
-          {renderSettingRow(
-            'moon',
-            'Dark Mode',
-            <Switch
-              value={settings.isDarkMode}
-              onValueChange={(value) => updateSetting('isDarkMode', value)}
-              trackColor={{ false: '#e5e5e5', true: '#000000' }}
-              thumbColor='#ffffff'
-              ios_backgroundColor="#e5e5e5"
-            />
-          )}
-
-          {renderSettingRow(
-            'eye',
-            'Bionic Reading',
-            <Switch
-              value={settings.bionicMode}
-              onValueChange={(value) => updateSetting('bionicMode', value)}
-              trackColor={{ false: '#e5e5e5', true: '#000000' }}
-              thumbColor='#ffffff'
-              ios_backgroundColor="#e5e5e5"
-            />
-          )}
-
-          {renderSettingRow(
-            'text',
-            'Font Size',
-            renderFontSizeSelector()
-          )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
-            Library
-          </Text>
-
-          {renderSettingRow(
-            'trash',
-            'Clear Library',
-            <Ionicons 
-              name="chevron-forward" 
-              size={16} 
-              color={settings.isDarkMode ? '#9ca3af' : '#6b7280'} 
-            />,
-            handleClearLibrary
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
-            About
-          </Text>
-
-          {renderSettingRow(
-            'information-circle',
-            'Version',
-            <Text style={[styles.settingValue, settings.isDarkMode && styles.settingValueDark]}>
-              {Constants.expoConfig?.version || '1.0.0'}
+        <View style={styles.content}>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
+              Reading Preferences
             </Text>
-          )}
+
+            {renderSettingRow(
+              'moon',
+              'Dark Mode',
+              <Switch
+                value={settings.isDarkMode}
+                onValueChange={(value) => updateSetting('isDarkMode', value)}
+                trackColor={{ false: '#e5e5e5', true: '#000000' }}
+                thumbColor='#ffffff'
+                ios_backgroundColor="#e5e5e5"
+              />
+            )}
+
+            {renderSettingRow(
+              'eye',
+              'Bionic Reading',
+              <Switch
+                value={settings.bionicMode}
+                onValueChange={(value) => updateSetting('bionicMode', value)}
+                trackColor={{ false: '#e5e5e5', true: '#000000' }}
+                thumbColor='#ffffff'
+                ios_backgroundColor="#e5e5e5"
+              />
+            )}
+
+            {renderSettingRow(
+              'text',
+              'Font Size',
+              renderFontSizeSelector()
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
+              Library
+            </Text>
+
+            {renderSettingRow(
+              'trash',
+              'Clear Library',
+              <Ionicons 
+                name="chevron-forward" 
+                size={16} 
+                color={settings.isDarkMode ? '#9ca3af' : '#6b7280'} 
+              />,
+              handleClearLibrary
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, settings.isDarkMode && styles.sectionTitleDark]}>
+              About
+            </Text>
+
+            {renderSettingRow(
+              'information-circle',
+              'Version',
+              <Text style={[styles.settingValue, settings.isDarkMode && styles.settingValueDark]}>
+                {Constants.expoConfig?.version || '1.0.0'}
+              </Text>
+            )}
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
-  containerDark: {
-    backgroundColor: '#000000',
+  safeArea: {
+    flex: 1,
   },
   header: {
     paddingHorizontal: 24,
     paddingVertical: 20,
-    backgroundColor: '#ffffff',
-  },
-  headerDark: {
-    backgroundColor: '#000000',
   },
   title: {
     fontSize: 24,

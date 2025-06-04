@@ -275,7 +275,7 @@ export class EPUBExtractor {
       while ((match = headingPattern.exec(processedContent)) !== null) {
         const headingText = this.cleanTextContent(match[2]);
         if (headingText.trim()) {
-          extractedText += '\n\n' + headingText.trim() + '\n\n';
+          extractedText += '\n\n' + `<${match[1]}>` + headingText.trim() + `</${match[1]}>` + '\n\n';
         }
       }
       
