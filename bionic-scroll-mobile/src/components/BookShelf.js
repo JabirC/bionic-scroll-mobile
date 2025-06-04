@@ -1,5 +1,5 @@
 // src/components/BookShelf.js
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -27,35 +27,17 @@ const BookShelf = ({
   onBookPress, 
   onDeleteBook, 
   onCreateCategory,
-  onAddBookToCategory,
+  onDeleteCategory,
+  onBookCategoryChange,
   isDarkMode, 
   selectedBook, 
   onBookLongPress,
-  isAddMode 
 }) => {
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const bookAnimations = useRef({}).current;
-
-  const getBookAnimation = (bookId) => {
-    if (!bookAnimations[bookId]) {
-      bookAnimations[bookId] = new Animated.Value(0);
-    }
-    return bookAnimations[bookId];
-  };
-
-  const animateBookAddition = (bookId) => {
-    const animation = getBookAnimation(bookId);
-    animation.setValue(-BOOK_WIDTH);
-    
-    Animated.spring(animation, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 8,
-    }).start();
-  };
-
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [bookToMove, setBookToMove] = useState(null);
+  
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -105,6 +87,54 @@ const BookShelf = ({
     setShowCreateCategory(false);
   };
 
+  const handleDeleteCategory = (categoryId, categoryName) => {
+    Alert.alert(
+      'Delete Category',
+      `Are you sure you want to delete "${categoryName}"? Books will be moved to "All".`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => onDeleteCategory(categoryId),
+        },
+      ]
+    );
+  };
+
+  const handleMoveBook = (book) => {
+    setBookToMove(book);
+    setShowMoveModal(true);
+  };
+
+  const handleBookAction = (book) => {
+    if (selectedBook === book.id) {
+      // Already selected, show actions
+      Alert.alert(
+        'Book Actions',
+        `"${book.name.replace(/\.(pdf|epub)$/i, '')}"`,
+        [
+          {
+            text: 'Move to Category',
+            onPress: () => handleMoveBook(book),
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => onDeleteBook(book.id),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => onBookLongPress(null),
+          },
+        ]
+      );
+    } else {
+      onBookLongPress(book.id);
+    }
+  };
+
   const renderBook = (book) => {
     const progress = getProgressPercentage(book);
     const coverColors = generateBookCover(book);
@@ -113,25 +143,9 @@ const BookShelf = ({
     const isUploading = book.isUploading || uploadingBooks.has(book.id);
     const uploadProgress = uploadingBooks.get(book.id) || 0;
     const isNewlyUploaded = book.isNewlyUploaded && !isUploading;
-    
-    const bookAnimation = getBookAnimation(book.id);
-
-    useEffect(() => {
-      if (isUploading && !book.animated) {
-        animateBookAddition(book.id);
-        book.animated = true;
-      }
-    }, [isUploading]);
 
     return (
-      <Animated.View 
-        style={[
-          styles.bookContainer,
-          {
-            transform: [{ translateX: bookAnimation }],
-          }
-        ]}
-      >
+      <View style={styles.bookContainer}>
         <TouchableOpacity
           style={[
             styles.book,
@@ -140,7 +154,7 @@ const BookShelf = ({
             isUploading && styles.bookUploading
           ]}
           onPress={() => !isUploading && onBookPress(book)}
-          onLongPress={() => !isUploading && onBookLongPress(isSelected ? null : book.id)}
+          onLongPress={() => !isUploading && handleBookAction(book)}
           activeOpacity={isUploading ? 1 : 0.8}
           disabled={isUploading}
         >
@@ -224,16 +238,7 @@ const BookShelf = ({
           )}
           
           {isSelected && !isUploading && (
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => {
-                onDeleteBook(book.id);
-                onBookLongPress(null);
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="trash" size={16} color="#ffffff" />
-            </TouchableOpacity>
+            <View style={styles.bookActionIndicator} />
           )}
         </TouchableOpacity>
         
@@ -262,35 +267,9 @@ const BookShelf = ({
             </View>
           )}
         </View>
-      </Animated.View>
+      </View>
     );
   };
-
-  const renderAddBookTemplate = (shelfId) => (
-    <TouchableOpacity
-      style={[
-        styles.bookContainer,
-        styles.addBookContainer
-      ]}
-      onPress={() => onAddBookToCategory(shelfId)}
-      activeOpacity={0.7}
-    >
-      <View style={[
-        styles.book,
-        styles.addBookTemplate,
-        isDarkMode && styles.addBookTemplateDark
-      ]}>
-        <Ionicons 
-          name="add" 
-          size={40} 
-          color={isDarkMode ? '#6b7280' : '#9ca3af'} 
-        />
-      </View>
-      <Text style={[styles.addBookLabel, isDarkMode && styles.addBookLabelDark]}>
-        Add Book
-      </Text>
-    </TouchableOpacity>
-  );
 
   const renderShelf = (shelf) => {
     return (
@@ -299,6 +278,19 @@ const BookShelf = ({
           <Text style={[styles.shelfTitle, isDarkMode && styles.shelfTitleDark]}>
             {shelf.title}
           </Text>
+          {!shelf.isDefault && (
+            <TouchableOpacity
+              style={styles.deleteCategoryButton}
+              onPress={() => handleDeleteCategory(shelf.id, shelf.title)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons 
+                name="trash-outline" 
+                size={18} 
+                color={isDarkMode ? '#ef4444' : '#dc2626'} 
+              />
+            </TouchableOpacity>
+          )}
         </View>
         
         <ScrollView
@@ -307,12 +299,24 @@ const BookShelf = ({
           contentContainerStyle={styles.shelfContent}
           scrollEventThrottle={16}
         >
-          {isAddMode && renderAddBookTemplate(shelf.id)}
           {shelf.books.map((book) => (
             <View key={book.id}>
               {renderBook(book)}
             </View>
           ))}
+          
+          {shelf.books.length === 0 && (
+            <View style={[styles.emptyShelf, isDarkMode && styles.emptyShelfDark]}>
+              <Ionicons 
+                name="book-outline" 
+                size={32} 
+                color={isDarkMode ? '#374151' : '#d1d5db'} 
+              />
+              <Text style={[styles.emptyShelfText, isDarkMode && styles.emptyShelfTextDark]}>
+                Empty
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </View>
     );
@@ -343,6 +347,7 @@ const BookShelf = ({
         </TouchableOpacity>
       </ScrollView>
 
+      {/* Create Category Modal */}
       <Modal
         visible={showCreateCategory}
         animationType="slide"
@@ -386,6 +391,68 @@ const BookShelf = ({
           </View>
         </View>
       </Modal>
+
+      {/* Move Book Modal */}
+      <Modal
+        visible={showMoveModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowMoveModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, isDarkMode && styles.modalContentDark]}>
+            <Text style={[styles.modalTitle, isDarkMode && styles.modalTitleDark]}>
+              Move to Category
+            </Text>
+            
+            <View style={styles.categoryList}>
+              {shelves.map(shelf => (
+                <TouchableOpacity
+                  key={shelf.id}
+                  style={[
+                    styles.categoryItem,
+                    isDarkMode && styles.categoryItemDark,
+                    bookToMove?.categoryId === shelf.id && styles.categoryItemSelected,
+                    bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryItemSelectedDark
+                  ]}
+                  onPress={() => {
+                    if (bookToMove) {
+                      onBookCategoryChange(bookToMove.id, shelf.id);
+                      setShowMoveModal(false);
+                      setBookToMove(null);
+                      onBookLongPress(null);
+                    }
+                  }}
+                >
+                  <Text style={[
+                    styles.categoryItemText,
+                    isDarkMode && styles.categoryItemTextDark,
+                    bookToMove?.categoryId === shelf.id && styles.categoryItemTextSelected,
+                    bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryItemTextSelectedDark
+                  ]}>
+                    {shelf.title}
+                  </Text>
+                  
+                  {bookToMove?.categoryId === shelf.id && (
+                    <Ionicons name="checkmark" size={20} color="#3b82f6" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.modalButtonCancel, styles.modalButtonFull]}
+              onPress={() => {
+                setShowMoveModal(false);
+                setBookToMove(null);
+                onBookLongPress(null);
+              }}
+            >
+              <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 };
@@ -398,11 +465,15 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
   shelfContainer: {
-    marginBottom: 40,
+    marginBottom: 36,
+    paddingTop: 12, // Added padding to prevent delete button cutoff
   },
   shelfHeader: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24, // Aligned with header
+    marginBottom: 12,
   },
   shelfTitle: {
     fontSize: 20,
@@ -413,16 +484,41 @@ const styles = StyleSheet.create({
   shelfTitleDark: {
     color: '#ffffff',
   },
+  deleteCategoryButton: {
+    padding: 6,
+  },
   shelfContent: {
-    paddingLeft: 20,
+    paddingLeft: 24, // Aligned with header
     paddingRight: 4,
+  },
+  emptyShelf: {
+    width: BOOK_WIDTH,
+    height: BOOK_HEIGHT,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(229, 231, 235, 0.2)',
+  },
+  emptyShelfDark: {
+    borderColor: '#374151',
+    backgroundColor: 'rgba(55, 65, 81, 0.2)',
+  },
+  emptyShelfText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#9ca3af',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  emptyShelfTextDark: {
+    color: '#6b7280',
   },
   bookContainer: {
     alignItems: 'center',
-    marginRight: 16,
-  },
-  addBookContainer: {
-    marginRight: 16,
+    marginRight: 8, // Reduced from 16 to 8
   },
   book: {
     width: BOOK_WIDTH,
@@ -444,27 +540,6 @@ const styles = StyleSheet.create({
   },
   bookDark: {
     shadowOpacity: 0.3,
-  },
-  addBookTemplate: {
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: '#e5e7eb',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBookTemplateDark: {
-    borderColor: '#374151',
-  },
-  addBookLabel: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#9ca3af',
-    fontWeight: '400',
-    fontFamily: 'System',
-  },
-  addBookLabelDark: {
-    color: '#6b7280',
   },
   bookCover: {
     width: '100%',
@@ -520,22 +595,14 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: 'System',
   },
-  deleteButton: {
+  bookActionIndicator: {
     position: 'absolute',
-    top: -12,
-    right: -8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#ef4444',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-    zIndex: 1,
+    bottom: -4,
+    left: BOOK_WIDTH / 2 - 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3b82f6',
   },
   bookInfo: {
     width: BOOK_WIDTH,
@@ -585,7 +652,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingVertical: 16,
     marginTop: 20,
     marginBottom: 20,
@@ -661,6 +728,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+  modalButtonFull: {
+    marginTop: 12,
+    flex: undefined,
+    width: '100%',
+  },
   modalButtonCancel: {
     backgroundColor: '#f3f4f6',
   },
@@ -678,6 +750,45 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontFamily: 'System',
+  },
+  categoryList: {
+    marginBottom: 16,
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  categoryItemDark: {
+    backgroundColor: '#1f2937',
+  },
+  categoryItemSelected: {
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
+  categoryItemSelectedDark: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+  },
+  categoryItemText: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  categoryItemTextDark: {
+    color: '#f9fafb',
+  },
+  categoryItemTextSelected: {
+    color: '#3b82f6',
+  },
+  categoryItemTextSelectedDark: {
+    color: '#60a5fa',
   },
 });
 

@@ -27,8 +27,6 @@ const LibraryScreen = ({ navigation }) => {
   const [uploadingBooks, setUploadingBooks] = useState(new Map());
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [selectedBook, setSelectedBook] = useState(null);
-  const [isAddMode, setIsAddMode] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(null);
 
   const { settings } = useSettings();
   const backgroundColorAnim = useRef(new Animated.Value(0)).current;
@@ -117,31 +115,8 @@ const LibraryScreen = ({ navigation }) => {
     );
   };
 
-  const updateUploadProgress = (tempId, progress) => {
-    setUploadingBooks(prev => {
-      const newMap = new Map(prev);
-      if (progress >= 100) {
-        setTimeout(() => {
-          setUploadingBooks(current => {
-            const updatedMap = new Map(current);
-            updatedMap.delete(tempId);
-            return updatedMap;
-          });
-        }, 300);
-      } else {
-        newMap.set(tempId, progress);
-      }
-      return newMap;
-    });
-  };
-
-  const handleAddModeToggle = () => {
-    setIsAddMode(!isAddMode);
-    setSelectedCategory(null);
-  };
-
-  const handleAddBookToCategory = async (categoryId) => {
-    setSelectedCategory(categoryId);
+  const handleUploadPress = async () => {
+    setSelectedBook(null);
     
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -152,7 +127,24 @@ const LibraryScreen = ({ navigation }) => {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
-        processFileInBackground(file, categoryId);
+        const tempId = Date.now().toString();
+        
+        const tempBook = {
+          id: tempId,
+          name: file.name,
+          type: file.mimeType,
+          isUploading: true,
+          dateAdded: new Date().toISOString(),
+          coverImage: null,
+          readingPosition: { percentage: 0 },
+          categoryId: 'all'
+        };
+
+        setBooks(prev => [tempBook, ...prev]);
+        setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
+
+        // Process file on background thread
+        setTimeout(() => processFile(file, tempId), 100);
       }
     } catch (error) {
       console.error('Document picker error:', error);
@@ -160,44 +152,7 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const processFileInBackground = async (file, categoryId = 'all') => {
-    const tempId = Date.now().toString();
-    
-    const tempBook = {
-      id: tempId,
-      name: file.name,
-      type: file.mimeType,
-      isUploading: true,
-      dateAdded: new Date().toISOString(),
-      coverImage: null,
-      readingPosition: { percentage: 0 },
-      categoryId: categoryId
-    };
-
-    setBooks(prev => {
-      const newBooks = [tempBook, ...prev];
-      return newBooks;
-    });
-    
-    setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
-
-    setTimeout(async () => {
-      try {
-        await processFile(file, tempId, categoryId);
-      } catch (error) {
-        console.error('Background processing error:', error);
-        setBooks(prev => prev.filter(book => book.id !== tempId));
-        setUploadingBooks(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(tempId);
-          return newMap;
-        });
-        Alert.alert('Upload Failed', error.message || 'Failed to process the document');
-      }
-    }, 100);
-  };
-
-  const processFile = async (file, tempId, categoryId) => {
+  const processFile = async (file, tempId) => {
     try {
       const progressInterval = setInterval(() => {
         setUploadingBooks(prev => {
@@ -224,7 +179,11 @@ const LibraryScreen = ({ navigation }) => {
       }
 
       clearInterval(progressInterval);
-      updateUploadProgress(tempId, 100);
+      setUploadingBooks(prev => {
+        const newMap = new Map(prev);
+        newMap.set(tempId, 100);
+        return newMap;
+      });
 
       const wordCount = extractionResult.text 
         ? extractionResult.text.split(/\s+/).length 
@@ -236,7 +195,7 @@ const LibraryScreen = ({ navigation }) => {
           name: file.name,
           size: file.size,
           type: file.mimeType,
-          categoryId: categoryId,
+          categoryId: 'all',
           metadata: {
             uploadedAt: new Date().toISOString(),
             wordCount,
@@ -247,8 +206,15 @@ const LibraryScreen = ({ navigation }) => {
         extractionResult
       );
 
-      setBooks(prev => {
-        const newBooks = prev.map(book => 
+      // Update the UI after successful upload
+      setTimeout(() => {
+        setUploadingBooks(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(tempId);
+          return newMap;
+        });
+
+        setBooks(prev => prev.map(book => 
           book.id === tempId 
             ? { 
                 ...book, 
@@ -258,12 +224,18 @@ const LibraryScreen = ({ navigation }) => {
                 isNewlyUploaded: true 
               }
             : book
-        );
-        return newBooks;
-      });
+        ));
+      }, 500);
       
     } catch (error) {
-      throw error;
+      console.error('Background processing error:', error);
+      setBooks(prev => prev.filter(book => book.id !== tempId));
+      setUploadingBooks(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(tempId);
+        return newMap;
+      });
+      Alert.alert('Upload Failed', error.message || 'Failed to process the document');
     }
   };
 
@@ -273,6 +245,24 @@ const LibraryScreen = ({ navigation }) => {
       loadBooksAndCategories();
     } catch (error) {
       Alert.alert('Error', 'Failed to create category');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    try {
+      await storageManager.deleteCategory(categoryId);
+      loadBooksAndCategories();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete category');
+    }
+  };
+
+  const handleBookCategoryChange = async (bookId, categoryId) => {
+    try {
+      await storageManager.updateBookCategory(bookId, categoryId);
+      loadBooksAndCategories();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to move book');
     }
   };
 
@@ -303,28 +293,24 @@ const LibraryScreen = ({ navigation }) => {
       .filter(book => !book.categoryId || book.categoryId === 'all')
       .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
     
-    if (allBooks.length > 0 || isAddMode) {
-      shelves.push({ 
-        id: 'all',
-        title: 'All', 
-        books: allBooks,
-        isDefault: true
-      });
-    }
+    shelves.push({ 
+      id: 'all',
+      title: 'All', 
+      books: allBooks,
+      isDefault: true
+    });
 
     categories.forEach(category => {
       const categoryBooks = books
         .filter(book => book.categoryId === category.id)
         .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
       
-      if (categoryBooks.length > 0 || isAddMode) {
-        shelves.push({
-          id: category.id,
-          title: category.name,
-          books: categoryBooks,
-          isDefault: false
-        });
-      }
+      shelves.push({
+        id: category.id,
+        title: category.name,
+        books: categoryBooks,
+        isDefault: false
+      });
     });
 
     return shelves;
@@ -355,15 +341,12 @@ const LibraryScreen = ({ navigation }) => {
             </View>
             
             <TouchableOpacity
-              style={[
-                styles.addButton,
-                isAddMode && styles.addButtonActive
-              ]}
-              onPress={handleAddModeToggle}
+              style={styles.addButton}
+              onPress={handleUploadPress}
               activeOpacity={0.7}
             >
               <Ionicons 
-                name={isAddMode ? "close" : "add"} 
+                name="add" 
                 size={40} 
                 color={settings.isDarkMode ? '#ffffff' : '#000000'} 
               />
@@ -371,18 +354,18 @@ const LibraryScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {books.length > 0 || categories.length > 0 || isAddMode ? (
+        {books.length > 0 || categories.length > 0 ? (
           <BookShelf
             shelves={organizeBooksShelves()}
             uploadingBooks={uploadingBooks}
             onBookPress={handleBookPress}
             onDeleteBook={handleDeleteBook}
             onCreateCategory={handleCreateCategory}
-            onAddBookToCategory={handleAddBookToCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onBookCategoryChange={handleBookCategoryChange}
             isDarkMode={settings.isDarkMode}
             selectedBook={selectedBook}
             onBookLongPress={setSelectedBook}
-            isAddMode={isAddMode}
           />
         ) : (
           !isLoading && renderEmptyState()
@@ -446,9 +429,6 @@ const styles = StyleSheet.create({
     height: 60,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  addButtonActive: {
-    transform: [{ rotate: '45deg' }],
   },
   emptyState: {
     flex: 1,
