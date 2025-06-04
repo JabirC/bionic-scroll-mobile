@@ -1,5 +1,5 @@
 // src/components/BookShelf.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   Animated,
   TouchableWithoutFeedback,
   Alert,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,7 +23,7 @@ import * as Progress from 'react-native-progress';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const BOOK_WIDTH = 100;
 const BOOK_HEIGHT = BOOK_WIDTH * 1.4;
-const MAX_OPTION_TITLE_LENGTH = 20; // Reduced from 25 to 20
+const MAX_OPTION_TITLE_LENGTH = 20;
 
 const BookShelf = ({ 
   shelves, 
@@ -39,14 +41,35 @@ const BookShelf = ({
   const [showBookOptions, setShowBookOptions] = useState(false);
   const [selectedBook, setSelectedBook] = useState(null);
   const [optionsPosition, setOptionsPosition] = useState({ x: 0, y: 0 });
-  const [moveModalPosition, setMoveModalPosition] = useState({ x: 0, y: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   
   const optionsScale = useRef(new Animated.Value(0)).current;
   const optionsOpacity = useRef(new Animated.Value(0)).current;
   const moveModalScale = useRef(new Animated.Value(0)).current;
   const moveModalOpacity = useRef(new Animated.Value(0)).current;
   
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => {
+        setKeyboardHeight(event.endCoordinates.height);
+      }
+    );
+    
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -132,37 +155,27 @@ const BookShelf = ({
     });
   };
 
-  // Show move modal
-  const showMoveToCollectionModal = () => {
-    if (isProcessing) return;
+  // Show move modal overlay at same position as options
+  const showMoveModalOverlay = () => {
+    setShowMoveModal(true);
     
-    hideBookOptions();
-    
-    setTimeout(() => {
-      setBookToMove(selectedBook);
-      setMoveModalPosition({ 
-        x: screenWidth / 2 - 170, // Center horizontally (340px width / 2)
-        y: screenHeight / 2 - 200  // Center vertically
-      });
-      setShowMoveModal(true);
-      
-      Animated.parallel([
-        Animated.timing(moveModalScale, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(moveModalOpacity, {
-          toValue: 1,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, 300);
+    Animated.parallel([
+      Animated.timing(moveModalScale, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(moveModalOpacity, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
 
-  // Hide move modal
+  // Hide move modal overlay
   const hideMoveModal = () => {
+    Keyboard.dismiss(); // Dismiss keyboard when closing
     Animated.parallel([
       Animated.timing(moveModalScale, {
         toValue: 0,
@@ -185,7 +198,13 @@ const BookShelf = ({
 
   // Handle move to collection button press
   const handleMoveToCollection = () => {
-    showMoveToCollectionModal();
+    if (isProcessing) return;
+    
+    hideBookOptions();
+    setTimeout(() => {
+      setBookToMove(selectedBook);
+      showMoveModalOverlay();
+    }, 300);
   };
 
   // Handle delete book
@@ -436,7 +455,7 @@ const BookShelf = ({
         onRequestClose={hideBookOptions}
       >
         <TouchableWithoutFeedback onPress={hideBookOptions}>
-          <View style={styles.optionsOver}>
+          <View style={styles.optionsOverlay}>
             <TouchableWithoutFeedback>
               <Animated.View
                 style={[
@@ -505,39 +524,13 @@ const BookShelf = ({
     );
   };
 
-  const renderShelf = (shelf) => {
-    // Don't render the Recent shelf if it has no books
-    if (shelf.books.length === 0) {
-      return null;
-    }
-
-    return (
-      <View key={shelf.id} style={styles.shelfContainer}>
-        <View style={styles.shelfHeader}>
-          <Text style={[styles.shelfTitle, isDarkMode && styles.shelfTitleDark]}>
-            {shelf.title}
-          </Text>
-          {!shelf.isDefault && shelf.books.length > 0 && (
-            <Text style={[styles.bookCount, isDarkMode && styles.bookCountDark]}>
-              {shelf.books.length} {shelf.books.length === 1 ? 'book' : 'books'}
-            </Text>
-          )}
-        </View>
-        
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.shelfContent}
-          scrollEventThrottle={16}
-        >
-          {shelf.books.map((book) => renderBook(book))}
-        </ScrollView>
-      </View>
-    );
-  };
-
   const renderMoveToCollectionModal = () => {
     if (!showMoveModal || !bookToMove) return null;
+
+    // Calculate position adjusting for keyboard
+    const adjustedTopPosition = showNewCategoryInput && keyboardHeight > 0 
+      ? Math.min(optionsPosition.y, screenHeight - keyboardHeight - 180 - 50)
+      : optionsPosition.y;
 
     return (
       <Modal
@@ -547,15 +540,15 @@ const BookShelf = ({
         onRequestClose={hideMoveModal}
       >
         <TouchableWithoutFeedback onPress={hideMoveModal}>
-          <View style={styles.moveModalOverlay}>
+          <View style={styles.optionsOverlay}>
             <TouchableWithoutFeedback>
               <Animated.View
                 style={[
                   styles.moveModalContainer,
                   isDarkMode && styles.moveModalContainerDark,
                   {
-                    left: moveModalPosition.x,
-                    top: moveModalPosition.y,
+                    left: Math.max(20, Math.min(optionsPosition.x, screenWidth - 200)),
+                    top: Math.max(100, adjustedTopPosition),
                     opacity: moveModalOpacity,
                     transform: [{ scale: moveModalScale }],
                   }
@@ -563,71 +556,73 @@ const BookShelf = ({
               >
                 <View style={styles.moveModalHeader}>
                   <Text style={[styles.moveModalTitle, isDarkMode && styles.moveModalTitleDark]}>
-                    Move to Collection
+                    Collections
                   </Text>
                 </View>
                 
                 {!showNewCategoryInput ? (
-                  <View style={styles.moveModalContent}>
-                    <ScrollView style={styles.categoryScrollList} showsVerticalScrollIndicator={false}>
-                      {shelves.map(shelf => (
-                        <TouchableOpacity
-                          key={shelf.id}
-                          style={[
-                            styles.moveModalCategoryItem,
-                            isDarkMode && styles.moveModalCategoryItemDark,
-                            bookToMove?.categoryId === shelf.id && styles.moveModalCategoryItemSelected,
-                          ]}
-                          onPress={() => handleMoveToExistingCollection(shelf.id)}
-                          disabled={isProcessing}
-                        >
-                          <Text style={[
-                            styles.moveModalCategoryText,
-                            isDarkMode && styles.moveModalCategoryTextDark,
-                            bookToMove?.categoryId === shelf.id && styles.moveModalCategoryTextSelected,
-                            isProcessing && styles.moveModalCategoryTextDisabled
-                          ]}>
-                            {shelf.title}
-                          </Text>
-                          
-                          {bookToMove?.categoryId === shelf.id && (
-                            <Ionicons 
-                              name="checkmark" 
-                              size={18} 
-                              color="#3b82f6" 
-                            />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                      
+                  <ScrollView style={styles.categoryScrollList} showsVerticalScrollIndicator={false}>
+                    {/* New button at the top */}
+                    <TouchableOpacity
+                      style={[
+                        styles.categoryModalItem,
+                        styles.newCategoryModalItem,
+                        isDarkMode && styles.categoryModalItemDark,
+                      ]}
+                      onPress={showNewCollectionInput}
+                      disabled={isProcessing}
+                    >
+                      <View style={styles.newCategoryModalContent}>
+                        <Ionicons 
+                          name="add" 
+                          size={16} 
+                          color={isProcessing ? '#9ca3af' : '#3b82f6'} 
+                        />
+                        <Text style={[
+                          styles.newCategoryModalText, 
+                          isDarkMode && styles.newCategoryModalTextDark,
+                          isProcessing && styles.newCategoryModalTextDisabled
+                        ]}>
+                          New
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Existing collections */}
+                    {shelves.map(shelf => (
                       <TouchableOpacity
+                        key={shelf.id}
                         style={[
-                          styles.moveModalCategoryItem,
-                          styles.moveModalNewCategoryItem,
-                          isDarkMode && styles.moveModalCategoryItemDark,
+                          styles.categoryModalItem,
+                          isDarkMode && styles.categoryModalItemDark,
+                          bookToMove?.categoryId === shelf.id && styles.categoryModalItemSelected,
+                          bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryModalItemSelectedDark
                         ]}
-                        onPress={showNewCollectionInput}
+                        onPress={() => handleMoveToExistingCollection(shelf.id)}
                         disabled={isProcessing}
                       >
-                        <View style={styles.moveModalNewCategoryContent}>
+                        <Text style={[
+                          styles.categoryModalItemText,
+                          isDarkMode && styles.categoryModalItemTextDark,
+                          bookToMove?.categoryId === shelf.id && styles.categoryModalItemTextSelected,
+                          bookToMove?.categoryId === shelf.id && isDarkMode && styles.categoryModalItemTextSelectedDark,
+                          isProcessing && styles.categoryModalItemTextDisabled
+                        ]}>
+                          {shelf.title}
+                        </Text>
+                        
+                        {bookToMove?.categoryId === shelf.id && (
                           <Ionicons 
-                            name="add-circle-outline" 
-                            size={18} 
-                            color={isProcessing ? '#9ca3af' : '#3b82f6'} 
+                            name="checkmark" 
+                            size={16} 
+                            color="#3b82f6" 
                           />
-                          <Text style={[
-                            styles.moveModalNewCategoryText, 
-                            isDarkMode && styles.moveModalNewCategoryTextDark,
-                            isProcessing && styles.moveModalNewCategoryTextDisabled
-                          ]}>
-                            Create New Collection
-                          </Text>
-                        </View>
+                        )}
                       </TouchableOpacity>
-                    </ScrollView>
-                  </View>
+                    ))}
+                  </ScrollView>
                 ) : (
-                  <View style={styles.moveModalContent}>
+                  <View style={styles.newCollectionInputContainer}>
                     <TextInput
                       style={[
                         styles.moveModalInput, 
@@ -641,6 +636,8 @@ const BookShelf = ({
                       autoFocus
                       onSubmitEditing={handleCreateNewCollection}
                       editable={!isProcessing}
+                      returnKeyType="done"
+                      blurOnSubmit={true}
                     />
                     
                     <View style={styles.moveModalButtons}>
@@ -674,7 +671,7 @@ const BookShelf = ({
                           styles.moveModalButtonTextCreate,
                           (!newCategoryName.trim() || isProcessing) && styles.moveModalButtonTextDisabled
                         ]}>
-                          {isProcessing ? 'Creating...' : 'Create & Move'}
+                          {isProcessing ? 'Creating...' : 'Create'}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -688,6 +685,37 @@ const BookShelf = ({
     );
   };
 
+  const renderShelf = (shelf) => {
+    // Don't render empty shelves
+    if (shelf.books.length === 0) {
+      return null;
+    }
+
+    return (
+      <View key={shelf.id} style={styles.shelfContainer}>
+        <View style={styles.shelfHeader}>
+          <Text style={[styles.shelfTitle, isDarkMode && styles.shelfTitleDark]}>
+            {shelf.title}
+          </Text>
+          {shelf.books.length > 0 && (
+            <Text style={[styles.bookCount, isDarkMode && styles.bookCountDark]}>
+              {shelf.books.length} {shelf.books.length === 1 ? 'book' : 'books'}
+            </Text>
+          )}
+        </View>
+        
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shelfContent}
+          scrollEventThrottle={16}
+        >
+          {shelf.books.map((book) => renderBook(book))}
+        </ScrollView>
+      </View>
+    );
+  };
+
   return (
     <>
       <ScrollView
@@ -696,6 +724,18 @@ const BookShelf = ({
         showsVerticalScrollIndicator={false}
       >
         {shelves.map((shelf) => renderShelf(shelf)).filter(Boolean)}
+        
+        {/* Show empty message only if no shelves have books */}
+        {shelves.every(shelf => shelf.books.length === 0) && (
+          <View style={styles.emptyState}>
+            <Text style={[
+              styles.emptyMessage, 
+              isDarkMode && styles.emptyMessageDark
+            ]}>
+              Upload your first book to begin
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {renderBookOptionsOverlay()}
@@ -863,6 +903,23 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#3b82f6',
   },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 40,
+    paddingTop: 120,
+  },
+  emptyMessage: {
+    fontSize: 18,
+    fontWeight: '300',
+    color: '#6b7280',
+    textAlign: 'center',
+    fontFamily: 'System',
+  },
+  emptyMessageDark: {
+    color: '#9ca3af',
+  },
 
   // Book Options Overlay
   optionsOverlay: {
@@ -936,22 +993,18 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
 
-  // Move Modal Overlay Styles
-  moveModalOverlay: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
+  // Move Modal Overlay - Smaller and positioned like options
   moveModalContainer: {
     position: 'absolute',
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 20,
-    elevation: 10,
-    width: 340,
-    maxHeight: 400,
+    elevation: 15,
+    width: 180,
+    maxHeight: 240,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.1)',
   },
@@ -960,93 +1013,95 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   moveModalHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   moveModalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#000000',
-    textAlign: 'center',
+    textAlign: 'left',
     fontFamily: 'System',
   },
   moveModalTitleDark: {
     color: '#ffffff',
   },
-  moveModalContent: {
-    padding: 16,
-  },
   categoryScrollList: {
-    maxHeight: 200,
+    maxHeight: 140,
   },
-  moveModalCategoryItem: {
+  categoryModalItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    marginBottom: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f3f4f6',
   },
-  moveModalCategoryItemDark: {
-    backgroundColor: '#1f2937',
+  categoryModalItemDark: {
+    borderBottomColor: '#374151',
   },
-  moveModalCategoryItemSelected: {
+  categoryModalItemSelected: {
     backgroundColor: 'rgba(59, 130, 246, 0.08)',
-    borderWidth: 1,
-    borderColor: '#3b82f6',
   },
-  moveModalCategoryText: {
-    fontSize: 15,
+  categoryModalItemSelectedDark: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+  },
+  categoryModalItemText: {
+    fontSize: 14,
     color: '#1f2937',
-    fontWeight: '500',
+    fontWeight: '400',
     fontFamily: 'System',
   },
-  moveModalCategoryTextDark: {
+  categoryModalItemTextDark: {
     color: '#f9fafb',
   },
-  moveModalCategoryTextSelected: {
+  categoryModalItemTextSelected: {
     color: '#3b82f6',
   },
-  moveModalCategoryTextDisabled: {
+  categoryModalItemTextSelectedDark: {
+    color: '#60a5fa',
+  },
+  categoryModalItemTextDisabled: {
     color: '#9ca3af',
   },
-  moveModalNewCategoryItem: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#3b82f6',
-    backgroundColor: 'transparent',
+  newCategoryModalItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    backgroundColor: 'rgba(59, 130, 246, 0.05)',
   },
-  moveModalNewCategoryContent: {
+  newCategoryModalContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  moveModalNewCategoryText: {
-    fontSize: 15,
+  newCategoryModalText: {
+    fontSize: 14,
     color: '#3b82f6',
     fontWeight: '500',
     fontFamily: 'System',
   },
-  moveModalNewCategoryTextDark: {
+  newCategoryModalTextDark: {
     color: '#60a5fa',
   },
-  moveModalNewCategoryTextDisabled: {
+  newCategoryModalTextDisabled: {
     color: '#9ca3af',
+  },
+  newCollectionInputContainer: {
+    padding: 16,
   },
   moveModalInput: {
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
     color: '#000000',
-    marginBottom: 16,
+    marginBottom: 12,
     fontFamily: 'System',
   },
   moveModalInputDark: {
@@ -1059,12 +1114,12 @@ const styles = StyleSheet.create({
   },
   moveModalButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   moveModalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
     alignItems: 'center',
   },
   moveModalButtonCancel: {
@@ -1078,15 +1133,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   moveModalButtonTextCancel: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#6b7280',
-    fontWeight: '600',
+    fontWeight: '500',
     fontFamily: 'System',
   },
   moveModalButtonTextCreate: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#ffffff',
-    fontWeight: '600',
+    fontWeight: '500',
     fontFamily: 'System',
   },
   moveModalButtonTextDisabled: {

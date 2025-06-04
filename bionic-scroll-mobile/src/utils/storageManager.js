@@ -128,33 +128,6 @@ export class StorageManager {
     }
   }
 
-  async createRecentCategory() {
-    try {
-      const categories = await this.getCategories();
-      
-      // Check if Recent category already exists
-      const existingRecent = categories.find(cat => cat.id === 'recent');
-      if (existingRecent) {
-        return existingRecent;
-      }
-      
-      const recentCategory = {
-        id: 'recent',
-        name: 'Recent',
-        createdAt: new Date().toISOString()
-      };
-      
-      categories.unshift(recentCategory); // Add at beginning
-      await AsyncStorage.setItem(this.categoriesKey, JSON.stringify(categories));
-      
-      console.log('StorageManager: Created Recent category:', recentCategory);
-      return recentCategory;
-    } catch (error) {
-      console.error('Error creating Recent category:', error);
-      throw new Error('Failed to create Recent category');
-    }
-  }
-  
   async deleteCategory(categoryId) {
     try {
       const categories = await this.getCategories();

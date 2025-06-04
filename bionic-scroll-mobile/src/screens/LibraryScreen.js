@@ -135,6 +135,29 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
+  const ensureRecentCategory = async () => {
+    try {
+      // Check if Recent category exists
+      const categories = await storageManager.getCategories();
+      let recentCategory = categories.find(cat => cat.name === 'Recent');
+      
+      if (!recentCategory) {
+        console.log('Creating Recent category...');
+        recentCategory = await storageManager.createCategory('Recent');
+        
+        // Update local state
+        if (recentCategory) {
+          setCategories(prev => [...prev, recentCategory]);
+        }
+      }
+      
+      return recentCategory;
+    } catch (error) {
+      console.error('Error ensuring Recent category:', error);
+      return null;
+    }
+  };
+
   const handleUploadPress = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -147,6 +170,10 @@ const LibraryScreen = ({ navigation }) => {
         const file = result.assets[0];
         const tempId = Date.now().toString();
         
+        // Ensure Recent category exists before uploading
+        const recentCategory = await ensureRecentCategory();
+        const categoryId = recentCategory ? recentCategory.id : 'recent'; // Fallback ID
+        
         const tempBook = {
           id: tempId,
           name: file.name,
@@ -155,14 +182,14 @@ const LibraryScreen = ({ navigation }) => {
           dateAdded: new Date().toISOString(),
           coverImage: null,
           readingPosition: { percentage: 0 },
-          categoryId: 'recent' // Changed from 'all' to 'recent'
+          categoryId: categoryId // Use Recent category
         };
 
         setBooks(prev => [tempBook, ...prev]);
         setUploadingBooks(prev => new Map(prev.set(tempId, 0)));
 
         // Process file on background thread
-        setTimeout(() => processFile(file, tempId), 100);
+        setTimeout(() => processFile(file, tempId, categoryId), 100);
       }
     } catch (error) {
       console.error('Document picker error:', error);
@@ -170,7 +197,7 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const processFile = async (file, tempId) => {
+  const processFile = async (file, tempId, categoryId) => {
     try {
       const progressInterval = setInterval(() => {
         setUploadingBooks(prev => {
@@ -206,9 +233,6 @@ const LibraryScreen = ({ navigation }) => {
       const wordCount = extractionResult.text 
         ? extractionResult.text.split(/\s+/).length 
         : 0;
-
-      // Ensure Recent collection exists before saving book
-      await ensureRecentCollectionExists();
       
       const bookId = await storageManager.saveBook(
         file.uri,
@@ -216,7 +240,7 @@ const LibraryScreen = ({ navigation }) => {
           name: file.name,
           size: file.size,
           type: file.mimeType,
-          categoryId: 'recent', // Changed from 'all' to 'recent'
+          categoryId: categoryId, // Use Recent category
           metadata: {
             uploadedAt: new Date().toISOString(),
             wordCount,
@@ -243,7 +267,7 @@ const LibraryScreen = ({ navigation }) => {
                 isUploading: false, 
                 coverImage: extractionResult.coverImage,
                 isNewlyUploaded: true,
-                categoryId: 'recent'
+                categoryId: categoryId
               }
             : book
         ));
@@ -258,21 +282,6 @@ const LibraryScreen = ({ navigation }) => {
         return newMap;
       });
       Alert.alert('Upload Failed', error.message || 'Failed to process the document');
-    }
-  };
-
-  const ensureRecentCollectionExists = async () => {
-    try {
-      // Check if Recent collection exists
-      const categories = await storageManager.getCategories();
-      const recentExists = categories.some(cat => cat.id === 'recent');
-      
-      if (!recentExists) {
-        console.log('Creating Recent collection...');
-        await storageManager.createRecentCategory();
-      }
-    } catch (error) {
-      console.error('Error ensuring Recent collection:', error);
     }
   };
 
@@ -338,17 +347,6 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Text style={[
-        styles.emptyMessage, 
-        settings.isDarkMode && styles.emptyMessageDark
-      ]}>
-        Upload your first book to begin
-      </Text>
-    </View>
-  );
-
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 6) return 'Good Night';
@@ -363,34 +361,37 @@ const LibraryScreen = ({ navigation }) => {
     
     console.log('Organizing shelves with', books.length, 'books and', categories.length, 'categories');
     
-    // Recent books shelf (books with categoryId === 'recent')
+    // Recent books shelf (books with categoryId === 'recent' or books in Recent category)
+    const recentCategory = categories.find(cat => cat.name === 'Recent');
+    const recentCategoryId = recentCategory ? recentCategory.id : 'recent';
+    
     const recentBooks = books
-      .filter(book => book.categoryId === 'recent')
+      .filter(book => book.categoryId === recentCategoryId || book.categoryId === 'recent')
       .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
     
-    // Only add Recent shelf if it has books
+    // Only show Recent shelf if it has books
     if (recentBooks.length > 0) {
       shelves.push({ 
-        id: 'recent',
+        id: recentCategoryId,
         title: 'Recent', 
         books: recentBooks,
-        isDefault: true
+        isDefault: false  // Changed to false so it shows book count
       });
     }
 
-    // Category shelves
+    // Other category shelves
     categories.forEach(category => {
-      // Skip the 'recent' category as we handle it separately
-      if (category.id === 'recent') return;
+      // Skip the Recent category as it's handled above
+      if (category.name === 'Recent') return;
       
       const categoryBooks = books
         .filter(book => book.categoryId === category.id)
         .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
       
-      console.log('Category', category.name, 'has', categoryBooks.length, 'books');
-      
-      // Only add shelf if it has books
+      // Only add shelves that have books
       if (categoryBooks.length > 0) {
+        console.log('Category', category.name, 'has', categoryBooks.length, 'books');
+        
         shelves.push({
           id: category.id,
           title: category.name,
@@ -424,7 +425,7 @@ const LibraryScreen = ({ navigation }) => {
                 {getGreeting()}
               </Text>
               <Text style={[styles.title, settings.isDarkMode && styles.titleDark]}>
-                {books.length > 0 ? `${books.length} ${books.length === 1 ? 'Book' : 'Books'}` : 'Your Books'}
+                Your Books
               </Text>
             </View>
             
@@ -442,19 +443,15 @@ const LibraryScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {books.length > 0 || categories.length > 0 ? (
-          <BookShelf
-            shelves={organizeBooksShelves()}
-            uploadingBooks={uploadingBooks}
-            onBookPress={handleBookPress}
-            onDeleteBook={handleDeleteBook}
-            onCreateCategory={handleCreateCategory}
-            onBookCategoryChange={handleBookCategoryChange}
-            isDarkMode={settings.isDarkMode}
-          />
-        ) : (
-          !isLoading && renderEmptyState()
-        )}
+        <BookShelf
+          shelves={organizeBooksShelves()}
+          uploadingBooks={uploadingBooks}
+          onBookPress={handleBookPress}
+          onDeleteBook={handleDeleteBook}
+          onCreateCategory={handleCreateCategory}
+          onBookCategoryChange={handleBookCategoryChange}
+          isDarkMode={settings.isDarkMode}
+        />
         
         {isLoading && (
           <View style={styles.loadingContainer}>
@@ -514,23 +511,6 @@ const styles = StyleSheet.create({
     height: 60,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 40,
-    paddingTop: 120,
-  },
-  emptyMessage: {
-    fontSize: 18,
-    fontWeight: '300',
-    color: '#6b7280',
-    textAlign: 'center',
-    fontFamily: 'System',
-  },
-  emptyMessageDark: {
-    color: '#9ca3af',
   },
   loadingContainer: {
     flex: 1,
