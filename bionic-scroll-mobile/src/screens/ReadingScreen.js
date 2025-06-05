@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import TextRenderer from '../components/TextRenderer';
 import { TextProcessor } from '../utils/textProcessor';
@@ -48,6 +49,8 @@ const ReadingScreen = ({ navigation, route }) => {
   const uiOpacity = useRef(new Animated.Value(1)).current;
   const carouselOpacity = useRef(new Animated.Value(0)).current;
   const lastScrollTime = useRef(Date.now());
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const contentOpacity = useRef(new Animated.Value(1)).current;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -226,22 +229,26 @@ const ReadingScreen = ({ navigation, route }) => {
   };
 
   const navigateToSection = (newIndex, direction) => {
+    if (isTransitioning) return;
+    
     setIsTransitioning(true);
     hideSectionCarousel();
     
-    const slideDistance = direction === 'next' ? -screenHeight : screenHeight;
-    
-    Animated.timing(translateY, {
-      toValue: slideDistance,
-      duration: 200,
+    // Instant transition with no flashing
+    Animated.timing(contentOpacity, {
+      toValue: 0,
+      duration: 50,
       useNativeDriver: true,
     }).start(() => {
       setCurrentSectionIndex(newIndex);
-      translateY.setValue(direction === 'next' ? screenHeight : -screenHeight);
       
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 200,
+      // Reset gesture
+      translateY.setValue(0);
+      
+      // Fade back in immediately
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 100,
         useNativeDriver: true,
       }).start(() => {
         setIsTransitioning(false);
@@ -250,8 +257,26 @@ const ReadingScreen = ({ navigation, route }) => {
   };
 
   const jumpToSection = (index) => {
-    setCurrentSectionIndex(index);
-    hideSectionCarousel();
+    if (isTransitioning) return;
+    
+    setIsTransitioning(true);
+    
+    Animated.timing(contentOpacity, {
+      toValue: 0,
+      duration: 50,
+      useNativeDriver: true,
+    }).start(() => {
+      setCurrentSectionIndex(index);
+      hideSectionCarousel();
+      
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }).start(() => {
+        setIsTransitioning(false);
+      });
+    });
   };
 
   const handleBackPress = () => {
@@ -277,25 +302,40 @@ const ReadingScreen = ({ navigation, route }) => {
           onPress={() => jumpToSection(index)}
           activeOpacity={0.7}
         >
-          <Text 
+          <LinearGradient
+            colors={isCurrentSection 
+              ? ['#3b82f6', '#1d4ed8'] 
+              : settings.isDarkMode 
+                ? ['#2a2a2a', '#1a1a1a']
+                : ['#f8fafc', '#f1f5f9']
+            }
             style={[
-              styles.pagePreview,
-              settings.isDarkMode && styles.pagePreviewDark,
-              isCurrentSection && styles.pagePreviewActive,
-              isCurrentSection && settings.isDarkMode && styles.pagePreviewActiveDark
+              styles.pageItemGradient,
+              isCurrentSection && styles.pageItemGradientActive
             ]}
-            numberOfLines={4}
           >
-            {sectionContent}
-          </Text>
-          <Text style={[
-            styles.pageNumber,
-            settings.isDarkMode && styles.pageNumberDark,
-            isCurrentSection && styles.pageNumberActive,
-            isCurrentSection && settings.isDarkMode && styles.pageNumberActiveDark
-          ]}>
-            {index + 1}
-          </Text>
+            <Text 
+              style={[
+                styles.pagePreview,
+                settings.isDarkMode && styles.pagePreviewDark,
+                isCurrentSection && styles.pagePreviewActive,
+                isCurrentSection && settings.isDarkMode && styles.pagePreviewActiveDark
+              ]}
+              numberOfLines={4}
+            >
+              {sectionContent}
+            </Text>
+            <View style={styles.pageNumberContainer}>
+              <Text style={[
+                styles.pageNumber,
+                settings.isDarkMode && styles.pageNumberDark,
+                isCurrentSection && styles.pageNumberActive,
+                isCurrentSection && settings.isDarkMode && styles.pageNumberActiveDark
+              ]}>
+                {index + 1}
+              </Text>
+            </View>
+          </LinearGradient>
         </TouchableOpacity>
       );
     };
@@ -307,6 +347,17 @@ const ReadingScreen = ({ navigation, route }) => {
           { opacity: carouselOpacity }
         ]}
       >
+        <View style={[
+          styles.carouselHeader,
+          settings.isDarkMode && styles.carouselHeaderDark
+        ]}>
+          <Text style={[
+            styles.carouselTitle,
+            settings.isDarkMode && styles.carouselTitleDark
+          ]}>
+            Navigate Sections
+          </Text>
+        </View>
         <FlatList
           data={sections}
           renderItem={renderSectionItem}
@@ -314,10 +365,10 @@ const ReadingScreen = ({ navigation, route }) => {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.carouselContent}
-          initialScrollIndex={Math.max(0, currentSectionIndex - 1)}
+          initialScrollIndex={Math.max(0, Math.min(currentSectionIndex, sections.length - 1))}
           getItemLayout={(data, index) => ({
-            length: 120,
-            offset: 130 * index,
+            length: 140,
+            offset: 150 * index,
             index,
           })}
         />
@@ -328,24 +379,42 @@ const ReadingScreen = ({ navigation, route }) => {
   const renderPDFContent = (section) => {
     return (
       <View style={styles.pageContainer}>
+        <View style={[
+          styles.pdfIconContainer,
+          settings.isDarkMode && styles.pdfIconContainerDark
+        ]}>
+          <Ionicons
+            name="document-text"
+            size={64}
+            color={settings.isDarkMode ? '#4f46e5' : '#6366f1'}
+          />
+        </View>
+        
         <Text style={[
           styles.pageMessage, 
           settings.isDarkMode && styles.pageMessageDark
         ]}>
           PDF Viewer
         </Text>
+        
         <Text style={[
           styles.pageNote,
           settings.isDarkMode && styles.pageNoteDark
         ]}>
           Reading PDF in original format. Swipe up and down to navigate between pages.
         </Text>
-        <Text style={[
-          styles.pageCounter,
-          settings.isDarkMode && styles.pageCounterDark
+        
+        <View style={[
+          styles.pageCounterContainer,
+          settings.isDarkMode && styles.pageCounterContainerDark
         ]}>
-          Page {currentSectionIndex + 1} of {sections.length}
-        </Text>
+          <Text style={[
+            styles.pageCounter,
+            settings.isDarkMode && styles.pageCounterDark
+          ]}>
+            Page {currentSectionIndex + 1} of {sections.length}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -357,14 +426,22 @@ const ReadingScreen = ({ navigation, route }) => {
     <View style={[styles.container, settings.isDarkMode && styles.containerDark]}>
       <StatusBar hidden />
       
-      <View style={[styles.progressBar, settings.isDarkMode && styles.progressBarDark]}>
-        <View style={[styles.progressFill, { width: `${progress}%` }]} />
-      </View>
+      {/* Enhanced Progress Bar */}
+      <LinearGradient
+        colors={['#3b82f6', '#1d4ed8']}
+        style={[styles.progressBar, { width: `${progress}%` }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+      />
+      <View style={[styles.progressBarBackground, settings.isDarkMode && styles.progressBarBackgroundDark]} />
 
       <SafeAreaView edges={['top']} style={styles.closeButtonContainer}>
         <Animated.View style={[styles.closeButtonWrapper, { opacity: uiOpacity }]}>
           <TouchableOpacity 
-            style={styles.closeButton}
+            style={[
+              styles.closeButton,
+              settings.isDarkMode && styles.closeButtonDark
+            ]}
             onPress={handleBackPress}
             activeOpacity={0.8}
             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
@@ -372,7 +449,7 @@ const ReadingScreen = ({ navigation, route }) => {
             <Ionicons 
               name="close" 
               size={24} 
-              color={settings.isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)'} 
+              color={settings.isDarkMode ? '#f1f5f9' : '#1f2937'} 
             />
           </TouchableOpacity>
         </Animated.View>
@@ -388,7 +465,10 @@ const ReadingScreen = ({ navigation, route }) => {
             <Animated.View 
               style={[
                 styles.content,
-                { transform: [{ translateY }] }
+                { 
+                  transform: [{ translateY }],
+                  opacity: contentOpacity
+                }
               ]}
             >
               {currentSection && isPageMode && book.type === 'application/pdf' ? (
@@ -398,27 +478,46 @@ const ReadingScreen = ({ navigation, route }) => {
                   section={currentSection}
                   settings={settings}
                   isDarkMode={settings.isDarkMode}
+                  key={`section-${currentSectionIndex}`}
                 />
               ) : currentSection ? (
                 <View style={styles.pageContainer}>
+                  <View style={[
+                    styles.pdfIconContainer,
+                    settings.isDarkMode && styles.pdfIconContainerDark
+                  ]}>
+                    <Ionicons
+                      name="document"
+                      size={64}
+                      color={settings.isDarkMode ? '#4f46e5' : '#6366f1'}
+                    />
+                  </View>
+                  
                   <Text style={[
                     styles.pageMessage, 
                     settings.isDarkMode && styles.pageMessageDark
                   ]}>
                     Document Viewer
                   </Text>
+                  
                   <Text style={[
                     styles.pageNote,
                     settings.isDarkMode && styles.pageNoteDark
                   ]}>
                     This document is displayed in its original format.
                   </Text>
-                  <Text style={[
-                    styles.pageCounter,
-                    settings.isDarkMode && styles.pageCounterDark
+                  
+                  <View style={[
+                    styles.pageCounterContainer,
+                    settings.isDarkMode && styles.pageCounterContainerDark
                   ]}>
-                    Page {currentSectionIndex + 1} of {sections.length}
-                  </Text>
+                    <Text style={[
+                      styles.pageCounter,
+                      settings.isDarkMode && styles.pageCounterDark
+                    ]}>
+                      Page {currentSectionIndex + 1} of {sections.length}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
             </Animated.View>
@@ -431,6 +530,7 @@ const ReadingScreen = ({ navigation, route }) => {
       <SafeAreaView edges={['bottom']} style={styles.sectionCounterContainer}>
         <Animated.View style={[
           styles.sectionCounter,
+          settings.isDarkMode && styles.sectionCounterDark,
           { opacity: uiOpacity }
         ]}>
           <Text style={[
@@ -451,24 +551,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   containerDark: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#0f0f0f',
   },
-  progressBar: {
+  
+  // Enhanced Progress Bar
+  progressBarBackground: {
     height: 3,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 1000,
+    zIndex: 999,
   },
-  progressBarDark: {
+  progressBarBackgroundDark: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#000000',
+  progressBar: {
+    height: 3,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 1000,
   },
+  
+  // Enhanced Close Button
   closeButtonContainer: {
     position: 'absolute',
     top: 0,
@@ -477,14 +584,26 @@ const styles = StyleSheet.create({
   },
   closeButtonWrapper: {
     paddingTop: 12,
-    paddingRight: 24,
+    paddingRight: 20,
   },
   closeButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(10px)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
+  closeButtonDark: {
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  
   contentWrapper: {
     flex: 1,
   },
@@ -492,45 +611,75 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 80,
     paddingBottom: 120,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
+  
+  // Enhanced PDF/Document Container
   pageContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
   },
+  pdfIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  pdfIconContainerDark: {
+    backgroundColor: 'rgba(79, 70, 229, 0.2)',
+  },
   pageMessage: {
-    fontSize: 24,
-    fontWeight: '300',
-    color: '#000000',
+    fontSize: 26,
+    fontWeight: '600',
+    color: '#1f2937',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     fontFamily: 'System',
   },
   pageMessageDark: {
-    color: '#ffffff',
+    color: '#f9fafb',
   },
   pageNote: {
     fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 24,
+    marginBottom: 32,
     fontFamily: 'System',
   },
   pageNoteDark: {
     color: '#9ca3af',
   },
+  pageCounterContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  pageCounterContainerDark: {
+    backgroundColor: 'rgba(79, 70, 229, 0.2)',
+  },
   pageCounter: {
-    fontSize: 18,
-    fontWeight: '400',
-    color: '#000000',
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#3b82f6',
     fontFamily: 'System',
   },
   pageCounterDark: {
-    color: '#ffffff',
+    color: '#a78bfa',
   },
+  
+  // Enhanced Section Counter
   sectionCounterContainer: {
     position: 'absolute',
     bottom: 0,
@@ -540,38 +689,75 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   sectionCounter: {
-    paddingBottom: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(10px)',
+    marginBottom: 15,
+  },
+  sectionCounterDark: {
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   sectionText: {
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: '500',
     color: '#6b7280',
     fontFamily: 'System',
   },
   sectionTextDark: {
-    color: '#9ca3af',
+    color: '#d1d5db',
   },
+  
+  // Enhanced Section Carousel
   sectionCarouselContainer: {
     position: 'absolute',
-    bottom: 60,
+    bottom: 80,
     left: 0,
     right: 0,
-    height: 200,
+    height: 220,
     zIndex: 999,
+  },
+  carouselHeader: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    marginHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  carouselHeaderDark: {
+    backgroundColor: 'rgba(26, 26, 26, 0.95)',
+    borderBottomColor: '#374151',
+  },
+  carouselTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    textAlign: 'center',
+    fontFamily: 'System',
+  },
+  carouselTitleDark: {
+    color: '#f9fafb',
   },
   carouselContent: {
     paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    marginHorizontal: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
+  
+  // Enhanced Page Items
   pageItem: {
-    width: 110,
+    width: 130,
     height: 160,
-    marginRight: 12,
-    padding: 12,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#e5e5e5',
-    justifyContent: 'space-between',
+    marginRight: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -579,11 +765,20 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   pageItemDark: {
-    backgroundColor: '#1a1a1a',
-    borderColor: '#333333',
+    shadowOpacity: 0.3,
   },
   pageItemActive: {
-    borderColor: '#3b82f6',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  pageItemGradient: {
+    flex: 1,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  pageItemGradientActive: {
+    shadowColor: '#3b82f6',
   },
   pagePreview: {
     fontSize: 11,
@@ -591,32 +786,37 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontFamily: 'System',
     textAlign: 'left',
+    flex: 1,
   },
   pagePreviewDark: {
     color: '#9ca3af',
   },
   pagePreviewActive: {
-    color: '#1f2937',
+    color: '#ffffff',
+    fontWeight: '500',
   },
   pagePreviewActiveDark: {
-    color: '#f3f4f6',
+    color: '#ffffff',
+  },
+  pageNumberContainer: {
+    alignItems: 'center',
+    marginTop: 8,
   },
   pageNumber: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#000000',
-    textAlign: 'center',
+    color: '#374151',
     fontFamily: 'System',
-    marginTop: 8,
   },
   pageNumberDark: {
-    color: '#ffffff',
+    color: '#d1d5db',
   },
   pageNumberActive: {
-    color: '#3b82f6',
+    color: '#ffffff',
+    fontSize: 16,
   },
   pageNumberActiveDark: {
-    color: '#3b82f6',
+    color: '#ffffff',
   },
 });
 

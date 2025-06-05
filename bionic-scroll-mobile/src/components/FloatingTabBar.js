@@ -16,6 +16,22 @@ const { width } = Dimensions.get('window');
 const FloatingTabBar = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
   const { settings } = useSettings();
+  const [selectedTab, setSelectedTab] = useState(state.index);
+  
+  const animatedValues = state.routes.map((_, i) => React.useRef(new Animated.Value(i === state.index ? 1 : 0)).current);
+
+  useEffect(() => {
+    // Animate tab selection
+    state.routes.forEach((_, i) => {
+      Animated.timing(animatedValues[i], {
+        toValue: i === state.index ? 1 : 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    });
+    
+    setSelectedTab(state.index);
+  }, [state.index]);
 
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 15 }]}>
@@ -49,6 +65,18 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
                 return 'circle';
             }
           };
+          
+          const scale = animatedValues[index].interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.85, 1],
+            extrapolate: 'clamp',
+          });
+          
+          const opacity = animatedValues[index].interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.6, 1],
+            extrapolate: 'clamp',
+          });
 
           return (
             <TouchableOpacity
@@ -63,17 +91,22 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
                 ]
               ]}
             >
-              <Ionicons
-                name={getIconName()}
-                size={isFocused ? 24 : 22}
-                color={
-                  isFocused 
-                    ? (settings.isDarkMode ? '#000000' : '#ffffff')
-                    : settings.isDarkMode 
-                      ? '#666666' 
-                      : '#999999'
-                }
-              />
+              <Animated.View style={{
+                transform: [{ scale }],
+                opacity,
+              }}>
+                <Ionicons
+                  name={getIconName()}
+                  size={isFocused ? 24 : 22}
+                  color={
+                    isFocused 
+                      ? (settings.isDarkMode ? '#000000' : '#ffffff')
+                      : settings.isDarkMode 
+                        ? '#888888' 
+                        : '#777777'
+                  }
+                />
+              </Animated.View>
             </TouchableOpacity>
           );
         })}
@@ -89,6 +122,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 1000,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -99,12 +133,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 24,
-    elevation: 12,
+    elevation: 15,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
     backdropFilter: 'blur(20px)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   tabContainerDark: {
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
