@@ -1,5 +1,5 @@
 // src/screens/LibraryScreen.js
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,19 +25,27 @@ const LibraryScreen = ({ navigation }) => {
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadingBooks, setUploadingBooks] = useState(new Map());
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
 
   const { settings } = useSettings();
   const backgroundColorAnim = useRef(new Animated.Value(0)).current;
-  const storageManager = new StorageManager();
-  const pdfExtractor = new PDFExtractor();
-  const epubExtractor = new EPUBExtractor();
+  const storageManager = useRef(new StorageManager()).current;
+  const pdfExtractor = useRef(new PDFExtractor()).current;
+  const epubExtractor = useRef(new EPUBExtractor()).current;
+  const isMountedRef = useRef(true);
 
-  useFocusEffect(
-    useCallback(() => {
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Only load data on initial mount, not every time the screen comes into focus
+  useEffect(() => {
+    if (!hasInitiallyLoaded && isMountedRef.current) {
       loadBooksAndCategories();
-    }, [])
-  );
+    }
+  }, [hasInitiallyLoaded]);
 
   useEffect(() => {
     Animated.timing(backgroundColorAnim, {
@@ -45,58 +53,65 @@ const LibraryScreen = ({ navigation }) => {
       duration: 300,
       useNativeDriver: false,
     }).start();
-  }, [settings.isDarkMode]);
+  }, [settings.isDarkMode, backgroundColorAnim]);
 
-  const loadBooksAndCategories = async () => {
-    if (isInitialLoad) {
-      setIsLoading(true);
-    }
+  const loadBooksAndCategories = useCallback(async () => {
+    if (hasInitiallyLoaded) return; // Prevent unnecessary reloads
+    
+    setIsLoading(true);
     
     try {
-      console.log('Loading books and categories...');
-      
       const [library, userCategories] = await Promise.all([
         storageManager.getLibrary(),
         storageManager.getCategories()
       ]);
       
-      console.log('Loaded library:', library.length, 'books');
-      console.log('Loaded categories:', userCategories.length, 'categories');
+      if (!isMountedRef.current) return;
       
       // Sort books by date
       const sortedBooks = library.sort((a, b) => 
         new Date(b.lastRead || b.dateAdded) - new Date(a.lastRead || a.dateAdded)
       );
       
-      // Only auto-delete empty categories if we're not in initial load
-      let filteredCategories = userCategories;
-      if (!isInitialLoad) {
-        filteredCategories = userCategories.filter(category => {
-          const hasBooks = library.some(book => book.categoryId === category.id);
-          if (!hasBooks) {
-            console.log('Auto-deleting empty category:', category.name);
-            storageManager.deleteCategory(category.id);
-            return false;
-          }
-          return true;
-        });
+      // Auto-delete empty categories (except Recent)
+      const categoriesToDelete = [];
+      const filteredCategories = userCategories.filter(category => {
+        const hasBooks = library.some(book => book.categoryId === category.id);
+        if (!hasBooks && category.name !== 'Recent') {
+          categoriesToDelete.push(category.id);
+          return false;
+        }
+        return true;
+      });
+      
+      // Delete empty categories in background
+      if (categoriesToDelete.length > 0) {
+        Promise.all(categoriesToDelete.map(id => storageManager.deleteCategory(id)));
       }
       
       setBooks(sortedBooks);
       setCategories(filteredCategories);
-      
-      console.log('State updated - Books:', sortedBooks.length, 'Categories:', filteredCategories.length);
+      setHasInitiallyLoaded(true);
       
     } catch (error) {
       console.error('Error loading data:', error);
-      Alert.alert('Error', 'Failed to load library data');
+      if (isMountedRef.current) {
+        Alert.alert('Error', 'Failed to load library data');
+      }
     } finally {
-      setIsLoading(false);
-      setIsInitialLoad(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [storageManager, hasInitiallyLoaded]);
 
-  const handleBookPress = async (book) => {
+  // Force refresh function for when we actually need to reload data
+  const forceRefresh = useCallback(async () => {
+    setHasInitiallyLoaded(false);
+    await loadBooksAndCategories();
+  }, [loadBooksAndCategories]);
+
+  const handleBookPress = useCallback(async (book) => {
     if (uploadingBooks.has(book.id)) {
       return;
     }
@@ -106,6 +121,12 @@ const LibraryScreen = ({ navigation }) => {
       
       if (book.isNewlyUploaded) {
         await storageManager.markBookAsOpened(book.id);
+        // Update local state to remove the new indicator
+        setBooks(prevBooks => 
+          prevBooks.map(b => 
+            b.id === book.id ? { ...b, isNewlyUploaded: false } : b
+          )
+        );
       }
       
       navigation.navigate('Reading', { 
@@ -116,38 +137,52 @@ const LibraryScreen = ({ navigation }) => {
       console.error('Error opening book:', error);
       Alert.alert('Error', 'Could not open book');
     }
-  };
+  }, [navigation, storageManager, uploadingBooks]);
 
-  const handleDeleteBook = async (bookId) => {
+  const handleDeleteBook = useCallback(async (bookId) => {
     try {
-      console.log('Deleting book:', bookId);
-      await storageManager.deleteBook(bookId);
-      
       // Update local state immediately for better UX
       setBooks(prev => prev.filter(book => book.id !== bookId));
       
-      // Then reload everything to ensure consistency
-      await loadBooksAndCategories();
+      // Delete from storage
+      await storageManager.deleteBook(bookId);
+      
+      // Check if we need to remove empty categories
+      const updatedBooks = books.filter(book => book.id !== bookId);
+      const emptyCategories = categories.filter(category => 
+        category.name !== 'Recent' && 
+        !updatedBooks.some(book => book.categoryId === category.id)
+      );
+      
+      if (emptyCategories.length > 0) {
+        setCategories(prev => 
+          prev.filter(cat => !emptyCategories.some(empty => empty.id === cat.id))
+        );
+      }
       
     } catch (error) {
       console.error('Error deleting book:', error);
       Alert.alert('Error', 'Could not remove book');
+      // Force refresh to restore consistent state
+      forceRefresh();
     }
-  };
+  }, [books, categories, storageManager, forceRefresh]);
 
-  const ensureRecentCategory = async () => {
+  const ensureRecentCategory = useCallback(async () => {
     try {
       // Check if Recent category exists
-      const categories = await storageManager.getCategories();
       let recentCategory = categories.find(cat => cat.name === 'Recent');
       
       if (!recentCategory) {
-        console.log('Creating Recent category...');
-        recentCategory = await storageManager.createCategory('Recent');
+        const allCategories = await storageManager.getCategories();
+        recentCategory = allCategories.find(cat => cat.name === 'Recent');
         
-        // Update local state
-        if (recentCategory) {
-          setCategories(prev => [...prev, recentCategory]);
+        if (!recentCategory) {
+          recentCategory = await storageManager.createCategory('Recent');
+          
+          if (recentCategory && isMountedRef.current) {
+            setCategories(prev => [...prev, recentCategory]);
+          }
         }
       }
       
@@ -156,9 +191,9 @@ const LibraryScreen = ({ navigation }) => {
       console.error('Error ensuring Recent category:', error);
       return null;
     }
-  };
+  }, [categories, storageManager]);
 
-  const handleUploadPress = async () => {
+  const handleUploadPress = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'application/epub+zip'],
@@ -172,7 +207,7 @@ const LibraryScreen = ({ navigation }) => {
         
         // Ensure Recent category exists before uploading
         const recentCategory = await ensureRecentCategory();
-        const categoryId = recentCategory ? recentCategory.id : 'recent'; // Fallback ID
+        const categoryId = recentCategory ? recentCategory.id : 'recent';
         
         const tempBook = {
           id: tempId,
@@ -182,7 +217,7 @@ const LibraryScreen = ({ navigation }) => {
           dateAdded: new Date().toISOString(),
           coverImage: null,
           readingPosition: { percentage: 0 },
-          categoryId: categoryId // Use Recent category
+          categoryId: categoryId
         };
 
         setBooks(prev => [tempBook, ...prev]);
@@ -195,11 +230,18 @@ const LibraryScreen = ({ navigation }) => {
       console.error('Document picker error:', error);
       Alert.alert('Error', 'Failed to select document');
     }
-  };
+  }, [ensureRecentCategory]);
 
-  const processFile = async (file, tempId, categoryId) => {
+  const processFile = useCallback(async (file, tempId, categoryId) => {
+    let progressInterval;
+    
     try {
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
+        if (!isMountedRef.current) {
+          clearInterval(progressInterval);
+          return;
+        }
+        
         setUploadingBooks(prev => {
           const current = prev.get(tempId) || 0;
           if (current >= 95) {
@@ -223,7 +265,12 @@ const LibraryScreen = ({ navigation }) => {
         throw new Error('Unsupported file type');
       }
 
-      clearInterval(progressInterval);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
+      if (!isMountedRef.current) return;
+      
       setUploadingBooks(prev => {
         const newMap = new Map(prev);
         newMap.set(tempId, 100);
@@ -240,7 +287,7 @@ const LibraryScreen = ({ navigation }) => {
           name: file.name,
           size: file.size,
           type: file.mimeType,
-          categoryId: categoryId, // Use Recent category
+          categoryId: categoryId,
           metadata: {
             uploadedAt: new Date().toISOString(),
             wordCount,
@@ -251,8 +298,12 @@ const LibraryScreen = ({ navigation }) => {
         extractionResult
       );
 
+      if (!isMountedRef.current) return;
+
       // Update the UI after successful upload
       setTimeout(() => {
+        if (!isMountedRef.current) return;
+        
         setUploadingBooks(prev => {
           const newMap = new Map(prev);
           newMap.delete(tempId);
@@ -275,6 +326,12 @@ const LibraryScreen = ({ navigation }) => {
       
     } catch (error) {
       console.error('Background processing error:', error);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
+      if (!isMountedRef.current) return;
+      
       setBooks(prev => prev.filter(book => book.id !== tempId));
       setUploadingBooks(prev => {
         const newMap = new Map(prev);
@@ -283,85 +340,83 @@ const LibraryScreen = ({ navigation }) => {
       });
       Alert.alert('Upload Failed', error.message || 'Failed to process the document');
     }
-  };
+  }, [storageManager, pdfExtractor, epubExtractor]);
 
-  const handleCreateCategory = async (name) => {
+  const handleCreateCategory = useCallback(async (name) => {
     try {
-      console.log('LibraryScreen: Creating category:', name);
-      
       const newCategory = await storageManager.createCategory(name);
       
       if (!newCategory) {
-        throw new Error('Failed to create category - no response from storage manager');
+        throw new Error('Failed to create category');
       }
       
-      console.log('LibraryScreen: Created category:', newCategory);
-      
-      // Update categories state immediately
-      setCategories(prev => [...prev, newCategory]);
-      
-      // Reload data to ensure consistency
-      setTimeout(() => {
-        loadBooksAndCategories();
-      }, 100);
+      if (isMountedRef.current) {
+        setCategories(prev => [...prev, newCategory]);
+      }
       
       return newCategory;
       
     } catch (error) {
-      console.error('LibraryScreen: Error creating category:', error);
+      console.error('Error creating category:', error);
       Alert.alert('Error', 'Failed to create collection');
       return null;
     }
-  };
+  }, [storageManager]);
 
-  const handleBookCategoryChange = async (bookId, categoryId) => {
+  const handleBookCategoryChange = useCallback(async (bookId, categoryId) => {
     try {
-      console.log('LibraryScreen: Moving book', bookId, 'to category', categoryId);
-      
-      const success = await storageManager.updateBookCategory(bookId, categoryId);
-      
-      if (success === false) {
-        throw new Error('Storage manager returned false');
-      }
-      
-      console.log('LibraryScreen: Successfully moved book');
-      
-      // Update books state immediately
+      // Optimistically update the UI
+      const previousBooks = books;
       setBooks(prev => prev.map(book => 
         book.id === bookId 
           ? { ...book, categoryId: categoryId }
           : book
       ));
       
-      // Reload data to ensure consistency
-      setTimeout(() => {
-        loadBooksAndCategories();
-      }, 100);
+      const success = await storageManager.updateBookCategory(bookId, categoryId);
+      
+      if (success === false) {
+        // Revert on failure
+        setBooks(previousBooks);
+        throw new Error('Failed to update book category');
+      }
+      
+      // Check if we need to remove empty categories
+      const emptyCategories = categories.filter(category => 
+        category.name !== 'Recent' && 
+        !books.some(book => 
+          book.id !== bookId && book.categoryId === category.id
+        )
+      );
+      
+      if (emptyCategories.length > 0) {
+        setCategories(prev => 
+          prev.filter(cat => !emptyCategories.some(empty => empty.id === cat.id))
+        );
+      }
       
       return true;
       
     } catch (error) {
-      console.error('LibraryScreen: Error moving book:', error);
+      console.error('Error moving book:', error);
       Alert.alert('Error', 'Failed to move book');
       return false;
     }
-  };
+  }, [books, categories, storageManager]);
 
-  const getGreeting = () => {
+  const getGreeting = useCallback(() => {
     const hour = new Date().getHours();
     if (hour < 6) return 'Good Night';
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     if (hour < 22) return 'Good Evening';
     return 'Good Night';
-  };
+  }, []);
 
-  const organizeBooksShelves = () => {
+  const organizedShelves = useMemo(() => {
     const shelves = [];
     
-    console.log('Organizing shelves with', books.length, 'books and', categories.length, 'categories');
-    
-    // Recent books shelf (books with categoryId === 'recent' or books in Recent category)
+    // Recent books shelf
     const recentCategory = categories.find(cat => cat.name === 'Recent');
     const recentCategoryId = recentCategory ? recentCategory.id : 'recent';
     
@@ -369,29 +424,24 @@ const LibraryScreen = ({ navigation }) => {
       .filter(book => book.categoryId === recentCategoryId || book.categoryId === 'recent')
       .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
     
-    // Only show Recent shelf if it has books
     if (recentBooks.length > 0) {
       shelves.push({ 
         id: recentCategoryId,
         title: 'Recent', 
         books: recentBooks,
-        isDefault: false  // Changed to false so it shows book count
+        isDefault: false
       });
     }
 
     // Other category shelves
     categories.forEach(category => {
-      // Skip the Recent category as it's handled above
       if (category.name === 'Recent') return;
       
       const categoryBooks = books
         .filter(book => book.categoryId === category.id)
         .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
       
-      // Only add shelves that have books
       if (categoryBooks.length > 0) {
-        console.log('Category', category.name, 'has', categoryBooks.length, 'books');
-        
         shelves.push({
           id: category.id,
           title: category.name,
@@ -401,9 +451,8 @@ const LibraryScreen = ({ navigation }) => {
       }
     });
 
-    console.log('Created', shelves.length, 'shelves');
     return shelves;
-  };
+  }, [books, categories]);
 
   const backgroundColorInterpolate = backgroundColorAnim.interpolate({
     inputRange: [0, 1],
@@ -444,7 +493,7 @@ const LibraryScreen = ({ navigation }) => {
         </View>
 
         <BookShelf
-          shelves={organizeBooksShelves()}
+          shelves={organizedShelves}
           uploadingBooks={uploadingBooks}
           onBookPress={handleBookPress}
           onDeleteBook={handleDeleteBook}
@@ -513,9 +562,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loadingContainer: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
 });
 

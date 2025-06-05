@@ -1,23 +1,10 @@
 // src/components/TextRenderer.js
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React from 'react';
+import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const TextRenderer = ({ section, settings, isDarkMode }) => {
   const fontSize = settings.fontSize || 22;
-  const webViewRef = useRef(null);
-  
-  // Pre-render the WebView with opacity 0
-  const [isReady, setIsReady] = React.useState(false);
-  
-  useEffect(() => {
-    // Give a tiny delay to ensure smooth transitions
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, 50);
-    
-    return () => clearTimeout(timer);
-  }, []);
   
   const htmlContent = `
     <!DOCTYPE html>
@@ -26,29 +13,25 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
       <style>
         body {
-          font-family: '-apple-system', 'SF Pro Text', 'SF Pro Rounded', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'San Francisco', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
           font-size: ${fontSize}px;
           line-height: 1.6;
           margin: 0;
           padding: 8px;
           padding-bottom: 40px;
-          background-color: ${isDarkMode ? '#1a1a1a' : '#ffffff'};
+          background-color: ${isDarkMode ? '#000000' : '#ffffff'};
           color: ${isDarkMode ? '#f3f4f6' : '#1a1a1a'};
           overflow-x: hidden;
           min-height: 100vh;
           box-sizing: border-box;
           font-weight: 400;
           letter-spacing: 0.2px;
-          text-rendering: optimizeLegibility;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
         }
         
         .content {
-          max-width: 650px;
+          max-width: 100%;
           width: 100%;
           margin: 0 auto;
-          opacity: 1;
         }
         
         p {
@@ -69,21 +52,8 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
           margin-bottom: 0;
         }
         
-        h1, h2, h3, h4, h5, h6 {
+        b {
           font-weight: 600;
-          color: ${isDarkMode ? '#ffffff' : '#000000'};
-          margin: ${fontSize * 1.5}px 0 ${fontSize * 0.8}px 0;
-          text-indent: 0;
-        }
-        
-        h1 { font-size: ${fontSize * 1.8}px; }
-        h2 { font-size: ${fontSize * 1.6}px; }
-        h3 { font-size: ${fontSize * 1.4}px; }
-        h4 { font-size: ${fontSize * 1.2}px; }
-        h5, h6 { font-size: ${fontSize * 1.1}px; }
-        
-        b, strong {
-          font-weight: ${isDarkMode ? '800' : '700'};
           color: ${isDarkMode ? '#ffffff' : '#000000'};
         }
         
@@ -113,39 +83,27 @@ const TextRenderer = ({ section, settings, isDarkMode }) => {
   `;
 
   return (
-    <View style={styles.container}>
-      <WebView
-        ref={webViewRef}
-        source={{ html: htmlContent }}
-        style={[
-          styles.webview,
-          isDarkMode && styles.webviewDark,
-          { opacity: isReady ? 1 : 0 }
-        ]}
-        scrollEnabled={false}
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
-        scalesPageToFit={false}
-        javaScriptEnabled={false}
-        domStorageEnabled={false}
-        startInLoadingState={false}
-        mixedContentMode="compatibility"
-        androidLayerType="hardware"
-        renderToHardwareTextureAndroid={true}
-        cacheEnabled={true}
-        cacheMode="LOAD_CACHE_ELSE_NETWORK"
-        onLoadEnd={() => setIsReady(true)}
-      />
-    </View>
+    <WebView
+      source={{ html: htmlContent }}
+      style={[
+        styles.webview,
+        isDarkMode && styles.webviewDark
+      ]}
+      scrollEnabled={false}
+      bounces={false}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      scalesPageToFit={false}
+      javaScriptEnabled={false}
+      domStorageEnabled={false}
+      startInLoadingState={false}
+      mixedContentMode="compatibility"
+      androidLayerType="hardware"
+    />
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
   webview: {
     flex: 1,
     backgroundColor: 'transparent',
