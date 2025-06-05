@@ -21,65 +21,63 @@ export class TextProcessor {
   calculateSectionCapacity() {
     const safeAreaTop = 80;
     const safeAreaBottom = 120;
-    const horizontalPadding = 32;
+    const horizontalPadding = 28;
     const maxContentWidth = Math.min(this.screenWidth - horizontalPadding, 650);
     
     const availableHeight = this.screenHeight - safeAreaTop - safeAreaBottom;
     const availableWidth = maxContentWidth;
     
     const lineHeightPx = this.fontSize * this.lineHeight;
-    const maxLines = Math.floor((availableHeight - 60) / lineHeightPx);
+    const maxLines = Math.floor((availableHeight - 40) / lineHeightPx);
     const charsPerLine = Math.floor(availableWidth / (this.fontSize * this.charWidth));
+    
+    // More conservative limits for better section distribution
+    const targetSectionHeight = availableHeight * 0.75;
+    const targetLines = Math.floor(targetSectionHeight / lineHeightPx);
     
     return {
       maxLines: Math.max(4, maxLines),
+      targetLines: Math.max(3, targetLines),
       charsPerLine: Math.max(30, charsPerLine),
-      maxChars: Math.max(200, maxLines * charsPerLine * 0.7),
+      maxChars: Math.max(300, targetLines * charsPerLine * 0.7),
+      targetChars: Math.max(200, targetLines * charsPerLine * 0.6),
       lineHeightPx,
-      availableHeight: availableHeight - 60
+      availableHeight,
+      targetSectionHeight
     };
   }
 
-  estimateTextHeight(text) {
+  estimateTextHeight(text, isHeading = false) {
     const { charsPerLine, lineHeightPx } = this.calculateSectionCapacity();
-    const paragraphs = text.split(/\n\s*\n/);
-    let totalHeight = 0;
+    
+    if (isHeading) {
+      const level = this.getHeadingLevel(text);
+      const headingMultiplier = level === 1 ? 2.2 : level === 2 ? 1.9 : level === 3 ? 1.6 : 1.3;
+      const baseHeight = this.fontSize * headingMultiplier * this.lineHeight;
+      const marginHeight = this.fontSize * 2;
+      return baseHeight + marginHeight;
+    }
 
-    paragraphs.forEach((paragraph, index) => {
-      if (this.isHeading(paragraph)) {
-        const level = this.getHeadingLevel(paragraph);
-        const headingMultiplier = level === 1 ? 1.8 : level === 2 ? 1.6 : level === 3 ? 1.4 : 1.2;
-        totalHeight += (this.fontSize * headingMultiplier * this.lineHeight) + (this.fontSize * 1.5);
-        return;
-      }
+    const cleanText = text.replace(/<[^>]*>/g, '');
+    const words = cleanText.split(/\s+/);
+    let currentLineLength = 0;
+    let lines = 1;
 
-      const words = paragraph.split(/\s+/);
-      let currentLineLength = 0;
-      let lines = 1;
-
-      words.forEach(word => {
-        const wordLength = word.length + 1;
-        if (currentLineLength + wordLength > charsPerLine) {
-          lines++;
-          currentLineLength = wordLength;
-        } else {
-          currentLineLength += wordLength;
-        }
-      });
-
-      const paragraphHeight = lines * lineHeightPx;
-      totalHeight += paragraphHeight;
-      
-      if (index < paragraphs.length - 1) {
-        totalHeight += this.fontSize * 1.1;
+    words.forEach(word => {
+      const wordLength = word.length + 1;
+      if (currentLineLength + wordLength > charsPerLine) {
+        lines++;
+        currentLineLength = wordLength;
+      } else {
+        currentLineLength += wordLength;
       }
     });
 
-    return totalHeight;
+    return lines * lineHeightPx;
   }
 
   isHeading(text) {
-    return /^<h[1-6]>/.test(text);
+    return /^<h[1-6]>/.test(text.trim());
   }
 
   getHeadingLevel(text) {
@@ -87,123 +85,208 @@ export class TextProcessor {
     return match ? parseInt(match[1]) : 1;
   }
 
-  splitTextIntoScreenSections(text) {
-    const { maxChars, availableHeight } = this.calculateSectionCapacity();
-    
-    const normalizedText = text
+  preserveFormattedStructure(text) {
+    // Preserve chapter breaks and section divisions
+    const cleanText = text
       .replace(/\r\n/g, '\n')
-      .replace(/\n{4,}/g, '\n\n\n')
+      .replace(/\r/g, '\n')
       .trim();
+
+    // Split by double line breaks but preserve structure
+    const sections = cleanText.split(/\n\s*\n/);
+    const processedSections = [];
+
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i].trim();
+      if (!section) continue;
+
+      // Check if this looks like a chapter heading or major section
+      if (this.isLikelyChapterHeading(section)) {
+        processedSections.push(`<h2>${section}</h2>`);
+      } else if (this.isLikelySubheading(section)) {
+        processedSections.push(`<h3>${section}</h3>`);
+      } else {
+        // Handle regular paragraphs - preserve internal line breaks for poetry/formatting
+        if (this.hasSignificantLineBreaks(section)) {
+          const lines = section.split('\n').map(line => line.trim()).filter(line => line);
+          processedSections.push(lines.join('\n'));
+        } else {
+          // Join single line breaks but keep the paragraph
+          const cleanParagraph = section.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+          processedSections.push(cleanParagraph);
+        }
+      }
+    }
+
+    return processedSections.join('\n\n');
+  }
+
+  isLikelyChapterHeading(text) {
+    const cleanText = text.replace(/<[^>]*>/g, '').trim();
+    return (
+      cleanText.length < 150 &&
+      (
+        /^(Chapter|CHAPTER|Ch\.?)\s*\d+/i.test(cleanText) ||
+        /^(Part|PART|Section|SECTION)\s*[IVX\d]/i.test(cleanText) ||
+        /^[IVX]+\.?\s*[A-Z][^.!?]*$/i.test(cleanText) ||
+        (cleanText.length < 50 && /^[A-Z][^.!?]*[^.!?]$/.test(cleanText))
+      )
+    );
+  }
+
+  isLikelySubheading(text) {
+    const cleanText = text.replace(/<[^>]*>/g, '').trim();
+    return (
+      cleanText.length < 100 &&
+      cleanText.length > 5 &&
+      /^[A-Z]/.test(cleanText) &&
+      !/[.!?]$/.test(cleanText) &&
+      cleanText.split(' ').length <= 12
+    );
+  }
+
+  hasSignificantLineBreaks(text) {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length < 3) return false;
     
-    const paragraphs = normalizedText.split(/\n\s*\n/).filter(p => p.trim());
+    // Check if lines are short (like poetry or formatted text)
+    const avgLineLength = lines.reduce((sum, line) => sum + line.length, 0) / lines.length;
+    return avgLineLength < 80 && lines.length >= 3;
+  }
+
+  splitTextIntoScreenSections(text) {
+    const { targetSectionHeight, targetChars, maxChars } = this.calculateSectionCapacity();
+    
+    console.log(`Text length: ${text.length} characters`);
+    
+    // First preserve the original structure
+    const structuredText = this.preserveFormattedStructure(text);
+    const paragraphs = structuredText.split(/\n\s*\n/).filter(p => p.trim());
+    
+    console.log(`Split into ${paragraphs.length} paragraphs`);
+    
     const sections = [];
-    let currentSection = '';
+    let currentSection = [];
     let currentHeight = 0;
-    let currentCharIndex = 0;
+    let currentCharCount = 0;
 
     for (let i = 0; i < paragraphs.length; i++) {
       const paragraph = paragraphs[i].trim();
       if (!paragraph) continue;
 
-      const paragraphHeight = this.estimateTextHeight(paragraph);
+      const isHeading = this.isHeading(paragraph);
+      const paragraphHeight = this.estimateTextHeight(paragraph, isHeading);
+      const paragraphChars = paragraph.replace(/<[^>]*>/g, '').length;
       
-      if (paragraphHeight > availableHeight * 0.85) {
-        if (currentSection.trim()) {
-          sections.push({
-            content: currentSection.trim(),
-            estimatedHeight: currentHeight,
-            id: sections.length,
-            startCharIndex: currentCharIndex - currentSection.length,
-            endCharIndex: currentCharIndex,
-            characterCount: currentSection.length
-          });
-          currentSection = '';
+      // Check if this individual paragraph is too long
+      if (paragraphHeight > targetSectionHeight * 1.2 && !isHeading) {
+        // Save current section if it has content
+        if (currentSection.length > 0) {
+          sections.push(this.createSection(currentSection, sections.length));
+          currentSection = [];
           currentHeight = 0;
+          currentCharCount = 0;
         }
 
-        const chunks = this.splitLongParagraph(paragraph, maxChars * 0.75);
-        
-        for (const chunk of chunks) {
-          sections.push({
-            content: chunk.trim(),
-            estimatedHeight: this.estimateTextHeight(chunk),
-            id: sections.length,
-            startCharIndex: currentCharIndex,
-            endCharIndex: currentCharIndex + chunk.length,
-            characterCount: chunk.length
-          });
-          currentCharIndex += chunk.length + 2;
+        // Split the long paragraph
+        const subParagraphs = this.splitLongParagraph(paragraph, targetChars);
+        for (const subParagraph of subParagraphs) {
+          sections.push(this.createSection([subParagraph], sections.length));
         }
+        continue;
+      }
+      
+      // Calculate what the totals would be with this paragraph
+      const spaceBetween = currentSection.length > 0 ? this.fontSize * 1.1 : 0;
+      const newHeight = currentHeight + paragraphHeight + spaceBetween;
+      const newCharCount = currentCharCount + paragraphChars;
+      
+      // More aggressive section breaks for better distribution
+      const shouldBreak = (
+        (newHeight > targetSectionHeight && currentSection.length > 0) ||
+        (newCharCount > targetChars && currentSection.length > 0) ||
+        (currentSection.length >= 3 && newCharCount > targetChars * 0.8)
+      );
+      
+      if (shouldBreak) {
+        // Start new section
+        sections.push(this.createSection(currentSection, sections.length));
+        currentSection = [paragraph];
+        currentHeight = paragraphHeight;
+        currentCharCount = paragraphChars;
       } else {
-        const newHeight = currentHeight + paragraphHeight + (currentSection ? this.fontSize * 1.1 : 0);
-        
-        if (newHeight > availableHeight * 0.85 && currentSection.trim()) {
-          sections.push({
-            content: currentSection.trim(),
-            estimatedHeight: currentHeight,
-            id: sections.length,
-            startCharIndex: currentCharIndex - currentSection.length,
-            endCharIndex: currentCharIndex,
-            characterCount: currentSection.length
-          });
-          
-          currentSection = paragraph;
-          currentHeight = paragraphHeight;
-        } else {
-          if (currentSection) {
-            currentSection += '\n\n' + paragraph;
-          } else {
-            currentSection = paragraph;
-          }
-          currentHeight = newHeight;
-        }
-        currentCharIndex += paragraph.length + 2;
+        // Add to current section
+        currentSection.push(paragraph);
+        currentHeight = newHeight;
+        currentCharCount = newCharCount;
       }
     }
 
-    if (currentSection.trim()) {
-      sections.push({
-        content: currentSection.trim(),
-        estimatedHeight: currentHeight,
-        id: sections.length,
-        startCharIndex: currentCharIndex - currentSection.length,
-        endCharIndex: currentCharIndex,
-        characterCount: currentSection.length
-      });
+    // Add any remaining content
+    if (currentSection.length > 0) {
+      sections.push(this.createSection(currentSection, sections.length));
     }
 
-    return sections.length > 0 ? sections : [{
-      content: text,
-      estimatedHeight: this.estimateTextHeight(text),
-      id: 0,
-      startCharIndex: 0,
-      endCharIndex: text.length,
-      characterCount: text.length
-    }];
+    // If we only have one section from a long text, force split it
+    if (sections.length === 1 && text.length > 2000) {
+      console.log('Forcing split of single long section');
+      return this.forceSplitText(text);
+    }
+
+    console.log(`Created ${sections.length} sections`);
+    return sections.length > 0 ? sections : [this.createSection([text], 0)];
+  }
+
+  forceSplitText(text) {
+    const { targetChars } = this.calculateSectionCapacity();
+    const sentences = this.splitIntoSentences(text);
+    const sections = [];
+    let currentSection = '';
+    
+    for (const sentence of sentences) {
+      if (currentSection.length + sentence.length > targetChars && currentSection) {
+        sections.push(this.createSection([currentSection.trim()], sections.length));
+        currentSection = sentence;
+      } else {
+        currentSection += (currentSection ? ' ' : '') + sentence;
+      }
+    }
+    
+    if (currentSection.trim()) {
+      sections.push(this.createSection([currentSection.trim()], sections.length));
+    }
+    
+    return sections.length > 1 ? sections : [this.createSection([text], 0)];
+  }
+
+  createSection(paragraphs, index) {
+    const content = paragraphs.join('\n\n');
+    const cleanContent = content.replace(/<[^>]*>/g, '');
+    
+    return {
+      content,
+      estimatedHeight: this.estimateTextHeight(content),
+      id: index,
+      characterCount: cleanContent.length,
+      paragraphCount: paragraphs.length
+    };
   }
 
   splitLongParagraph(paragraph, maxChars) {
-    if (paragraph.length <= maxChars) {
+    if (paragraph.replace(/<[^>]*>/g, '').length <= maxChars) {
       return [paragraph];
     }
 
+    // Try to split by sentences first
     const sentences = this.splitIntoSentences(paragraph);
     const chunks = [];
     let currentChunk = '';
 
     for (const sentence of sentences) {
-      if (sentence.length > maxChars) {
-        if (currentChunk.trim()) {
-          chunks.push(currentChunk.trim());
-          currentChunk = '';
-        }
-        
-        const subChunks = this.splitLongSentence(sentence, maxChars);
-        chunks.push(...subChunks);
-      } else if (currentChunk.length + sentence.length > maxChars) {
-        if (currentChunk.trim()) {
-          chunks.push(currentChunk.trim());
-        }
+      const sentenceLength = sentence.replace(/<[^>]*>/g, '').length;
+      
+      if (currentChunk.replace(/<[^>]*>/g, '').length + sentenceLength > maxChars && currentChunk) {
+        chunks.push(currentChunk.trim());
         currentChunk = sentence;
       } else {
         currentChunk += (currentChunk ? ' ' : '') + sentence;
@@ -214,75 +297,78 @@ export class TextProcessor {
       chunks.push(currentChunk.trim());
     }
 
-    return chunks.length > 0 ? chunks : [paragraph];
-  }
-
-  splitIntoSentences(text) {
-    const sentences = [];
-    const regex = /[.!?]+[\s'"]*(?=[A-Z\n])|[.!?]+$/g;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-      const sentence = text.substring(lastIndex, match.index + match[0].length).trim();
-      if (sentence && sentence.length > 3) {
-        sentences.push(sentence);
-      }
-      lastIndex = match.index + match[0].length;
-    }
-
-    if (lastIndex < text.length) {
-      const remaining = text.substring(lastIndex).trim();
-      if (remaining) {
-        sentences.push(remaining);
+    // If we still have chunks that are too long, split by words
+    const finalChunks = [];
+    for (const chunk of chunks) {
+      if (chunk.replace(/<[^>]*>/g, '').length > maxChars) {
+        finalChunks.push(...this.splitByWords(chunk, maxChars));
+      } else {
+        finalChunks.push(chunk);
       }
     }
 
-    return sentences.length > 0 ? sentences : [text];
+    return finalChunks.length > 0 ? finalChunks : [paragraph];
   }
 
-  splitLongSentence(sentence, maxChars) {
+  splitByWords(text, maxChars) {
+    const words = text.split(/\s+/);
     const chunks = [];
-    const clauseRegex = /[,;:—–-]\s*/g;
-    const clauses = sentence.split(clauseRegex);
-    
-    if (clauses.length > 1) {
-      let currentChunk = '';
-      
-      for (let i = 0; i < clauses.length; i++) {
-        const clause = clauses[i];
-        const separator = i < clauses.length - 1 ? ', ' : '';
-        
-        if (currentChunk.length + clause.length + separator.length > maxChars && currentChunk) {
-          chunks.push(currentChunk.trim());
-          currentChunk = clause + separator;
-        } else {
-          currentChunk += (currentChunk ? ', ' : '') + clause;
-        }
-      }
-      
-      if (currentChunk.trim()) {
+    let currentChunk = '';
+
+    for (const word of words) {
+      const testChunk = currentChunk + (currentChunk ? ' ' : '') + word;
+      if (testChunk.replace(/<[^>]*>/g, '').length > maxChars && currentChunk) {
         chunks.push(currentChunk.trim());
+        currentChunk = word;
+      } else {
+        currentChunk = testChunk;
       }
-    } else {
-      const words = sentence.split(/\s+/);
-      let currentChunk = '';
-      
-      for (const word of words) {
-        if (currentChunk.length + word.length + 1 > maxChars && currentChunk) {
-          chunks.push(currentChunk.trim());
-          currentChunk = word;
-        } else {
-          currentChunk += (currentChunk ? ' ' : '') + word;
-        }
-      }
-      
-      if (currentChunk.trim()) {
-        chunks.push(currentChunk.trim());
-      }
+    }
+
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
     }
 
     return chunks;
+  }
+
+  splitIntoSentences(text) {
+    // Enhanced sentence splitting that preserves formatting
+    const sentences = [];
+    let current = '';
+    let inTag = false;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      
+      if (char === '<') {
+        inTag = true;
+      } else if (char === '>') {
+        inTag = false;
+      }
+      
+      current += char;
+      
+      if (!inTag && /[.!?]/.test(char)) {
+        // Look ahead to see if this is really the end of a sentence
+        const nextChar = text[i + 1];
+        const nextNextChar = text[i + 2];
+        
+        if (!nextChar || /\s/.test(nextChar)) {
+          if (!nextNextChar || /[A-Z]/.test(nextNextChar) || /\n/.test(nextNextChar)) {
+            sentences.push(current.trim());
+            current = '';
+            continue;
+          }
+        }
+      }
+    }
+    
+    if (current.trim()) {
+      sentences.push(current.trim());
+    }
+    
+    return sentences.filter(s => s.length > 0);
   }
 
   formatBionicText(text) {
@@ -308,49 +394,53 @@ export class TextProcessor {
   }
 
   processSection(section, isBionic = false) {
-    const regularFormatted = this.formatForReading(section.content);
-    const processed = isBionic 
-      ? this.formatForReading(this.formatBionicText(section.content))
-      : regularFormatted;
+    const content = isBionic ? this.formatBionicText(section.content) : section.content;
+    const processed = this.formatForReading(content);
 
     return {
       ...section,
       processed,
-      regularFormatted,
       isBionic
     };
   }
 
   formatForReading(text) {
-    return text
-      .split(/\n\s*\n/)
-      .filter(p => p.trim())
-      .map(p => {
-        if (this.isHeading(p)) {
-          return p.replace(/<(h[1-6])>(.*?)<\/h[1-6]>/g, '<$1>$2</$1>');
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim());
+    
+    return paragraphs.map(paragraph => {
+      const trimmed = paragraph.trim();
+      
+      if (this.isHeading(trimmed)) {
+        return trimmed; // Keep heading tags as-is
+      } else {
+        // Handle line breaks within paragraphs
+        const lines = trimmed.split('\n').map(line => line.trim()).filter(line => line);
+        
+        if (lines.length > 1 && this.hasSignificantLineBreaks(trimmed)) {
+          // Preserve internal line breaks (like poetry)
+          return `<p>${lines.join('<br/>')}</p>`;
         } else {
-          const processedParagraph = p
-            .split('\n')
-            .map(line => line.trim())
-            .join('<br/>');
-          return `<p>${processedParagraph}</p>`;
+          // Join lines with spaces for regular paragraphs
+          return `<p>${lines.join(' ')}</p>`;
         }
-      })
-      .join('');
+      }
+    }).join('');
   }
 
   findSectionByCharacterIndex(sections, targetCharIndex) {
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
-      if (targetCharIndex >= section.startCharIndex && targetCharIndex <= section.endCharIndex) {
-        return i;
+      if (section.startCharIndex && section.endCharIndex) {
+        if (targetCharIndex >= section.startCharIndex && targetCharIndex <= section.endCharIndex) {
+          return i;
+        }
       }
     }
     return 0;
   }
 
   estimateReadingTime(text, wordsPerMinute = 200) {
-    const words = text.split(/\s+/).filter(word => word.length > 0);
+    const words = text.replace(/<[^>]*>/g, '').split(/\s+/).filter(word => word.length > 0);
     const minutes = Math.ceil(words.length / wordsPerMinute);
     return {
       words: words.length,

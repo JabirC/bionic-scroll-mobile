@@ -258,60 +258,69 @@ export class EPUBExtractor {
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
       
-      const structuralTags = ['div', 'section', 'article', 'main', 'aside'];
-      let processedContent = text;
-      
-      structuralTags.forEach(tag => {
-        const tagPattern = new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`, 'gi');
-        processedContent = processedContent.replace(tagPattern, (match, content) => {
-          return this.preserveStructure(content);
-        });
-      });
-      
       let extractedText = '';
       
+      // Extract headings with proper structure
       const headingPattern = /<(h[1-6])[^>]*>([\s\S]*?)<\/h[1-6]>/gi;
       let match;
-      while ((match = headingPattern.exec(processedContent)) !== null) {
+      const headings = [];
+      
+      while ((match = headingPattern.exec(text)) !== null) {
         const headingText = this.cleanTextContent(match[2]);
         if (headingText.trim()) {
-          extractedText += '\n\n' + `<${match[1]}>` + headingText.trim() + `</${match[1]}>` + '\n\n';
+          headings.push({
+            level: match[1],
+            text: headingText.trim(),
+            position: match.index
+          });
         }
       }
       
+      // Extract paragraphs
       const paragraphPattern = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-      while ((match = paragraphPattern.exec(processedContent)) !== null) {
+      const paragraphs = [];
+      
+      while ((match = paragraphPattern.exec(text)) !== null) {
         const paragraphText = this.cleanTextContent(match[1]);
         if (paragraphText.trim() && paragraphText.length > 10) {
-          extractedText += paragraphText.trim() + '\n\n';
+          paragraphs.push({
+            text: paragraphText.trim(),
+            position: match.index
+          });
         }
       }
       
-      const listPattern = /<(ul|ol)[^>]*>([\s\S]*?)<\/(ul|ol)>/gi;
-      while ((match = listPattern.exec(processedContent)) !== null) {
-        const listItems = match[2].match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
-        listItems.forEach(item => {
-          const itemText = this.cleanTextContent(item.replace(/<\/?li[^>]*>/gi, ''));
-          if (itemText.trim()) {
-            extractedText += '• ' + itemText.trim() + '\n';
-          }
-        });
-        extractedText += '\n';
-      }
-      
-      const blockquotePattern = /<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi;
-      while ((match = blockquotePattern.exec(processedContent)) !== null) {
-        const quoteText = this.cleanTextContent(match[1]);
-        if (quoteText.trim()) {
-          extractedText += '\n"' + quoteText.trim() + '"\n\n';
+      // Extract div content (often used for paragraphs in EPUBs)
+      const divPattern = /<div[^>]*class="[^"]*(?:para|paragraph|body|text)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+      while ((match = divPattern.exec(text)) !== null) {
+        const divText = this.cleanTextContent(match[1]);
+        if (divText.trim() && divText.length > 10) {
+          paragraphs.push({
+            text: divText.trim(),
+            position: match.index
+          });
         }
       }
       
+      // Combine all content, preserving structure
+      const allContent = [...headings, ...paragraphs].sort((a, b) => a.position - b.position);
+      
+      allContent.forEach(item => {
+        if (item.level) {
+          extractedText += `\n\n<${item.level}>${item.text}</${item.level}>\n\n`;
+        } else {
+          extractedText += item.text + '\n\n';
+        }
+      });
+      
+      // If no structured content found, try body extraction
       if (!extractedText.trim()) {
-        const bodyMatch = processedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        const contentToProcess = bodyMatch ? bodyMatch[1] : processedContent;
+        const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        const contentToProcess = bodyMatch ? bodyMatch[1] : text;
         
-        extractedText = this.cleanTextContent(contentToProcess);
+        extractedText = this.cleanTextContent(contentToProcess)
+          .replace(/\n\s*\n\s*\n+/g, '\n\n')
+          .trim();
       }
       
       return extractedText;
@@ -321,19 +330,14 @@ export class EPUBExtractor {
     }
   }
   
-  preserveStructure(content) {
-    return content
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/?(div|section|article)[^>]*>/gi, '\n')
-      .replace(/\n\s*\n\s*\n+/g, '\n\n');
-  }
-  
   cleanTextContent(text) {
     if (!text || typeof text !== 'string') {
       return '';
     }
 
     return text
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
       .replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')

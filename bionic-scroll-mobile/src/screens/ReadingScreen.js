@@ -34,7 +34,6 @@ const ReadingScreen = ({ navigation, route }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showUI, setShowUI] = useState(true);
   const [isPageMode, setIsPageMode] = useState(false);
-  const [showSectionCarousel, setShowSectionCarousel] = useState(false);
   const [settings, setSettings] = useState({
     isDarkMode: false,
     fontSize: 22,
@@ -46,8 +45,9 @@ const ReadingScreen = ({ navigation, route }) => {
   const settingsManager = useRef(new SettingsManager()).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const uiOpacity = useRef(new Animated.Value(1)).current;
-  const carouselOpacity = useRef(new Animated.Value(0)).current;
   const lastScrollTime = useRef(Date.now());
+  const gestureStartPos = useRef({ x: 0, y: 0 });
+  const isScrolling = useRef(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -80,7 +80,7 @@ const ReadingScreen = ({ navigation, route }) => {
     
     if (isPDF && bookData.originalPages) {
       setSections(bookData.originalPages);
-    } else if (sections.length > 0 && !isPDF) {
+    } else if (!isPDF && bookData.text) {
       textProcessor.setFontSize(userSettings.fontSize || 22);
       const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
       const processedSections = rawSections.map(section => 
@@ -130,6 +130,9 @@ const ReadingScreen = ({ navigation, route }) => {
 
     textProcessor.setFontSize(userSettings.fontSize || 22);
     const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
+    
+    console.log(`Created ${rawSections.length} sections from text of ${bookData.text.length} characters`);
+    
     const processedSections = rawSections.map(section => 
       textProcessor.processSection(section, userSettings.bionicMode || false)
     );
@@ -142,45 +145,26 @@ const ReadingScreen = ({ navigation, route }) => {
   };
 
   const toggleUI = () => {
-    if (showSectionCarousel) {
-      hideSectionCarousel();
-      return;
-    }
-
-    const newShowUI = !showUI;
-    setShowUI(newShowUI);
-    setShowSectionCarousel(newShowUI);
+    const shouldShowUI = !showUI;
+    setShowUI(shouldShowUI);
     
-    Animated.parallel([
-      Animated.timing(uiOpacity, {
-        toValue: newShowUI ? 1 : 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(carouselOpacity, {
-        toValue: newShowUI ? 1 : 0,
-        duration: 200,
-        useNativeDriver: true,
-      })
-    ]).start();
+    Animated.timing(uiOpacity, {
+      toValue: shouldShowUI ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
   };
 
-  const hideSectionCarousel = () => {
-    Animated.parallel([
+  const hideUI = () => {
+    if (showUI) {
+      setShowUI(false);
+      
       Animated.timing(uiOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(carouselOpacity, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
-      })
-    ]).start(() => {
-      setShowSectionCarousel(false);
-      setShowUI(true);
-    });
+      }).start();
+    }
   };
 
   const handleGestureEvent = Animated.event(
@@ -189,25 +173,49 @@ const ReadingScreen = ({ navigation, route }) => {
   );
 
   const handleGestureStateChange = ({ nativeEvent }) => {
-    const { state, translationY, velocityY } = nativeEvent;
+    const { state, translationY, velocityY, x, y } = nativeEvent;
+    
+    if (state === State.BEGAN) {
+      gestureStartPos.current = { x, y };
+      isScrolling.current = false;
+      const now = Date.now();
+      lastScrollTime.current = now;
+    }
+    
+    if (state === State.ACTIVE) {
+      const deltaX = Math.abs(x - gestureStartPos.current.x);
+      const deltaY = Math.abs(y - gestureStartPos.current.y);
+      
+      // Consider it scrolling if there's significant vertical movement
+      if (deltaY > 10 || Math.abs(translationY) > 15) {
+        isScrolling.current = true;
+      }
+    }
     
     if (state === State.END) {
       const now = Date.now();
-      if (now - lastScrollTime.current < 200) {
+      const timeDiff = now - lastScrollTime.current;
+      const deltaX = Math.abs(x - gestureStartPos.current.x);
+      const deltaY = Math.abs(y - gestureStartPos.current.y);
+      
+      // If it was a quick tap (not a scroll), ignore for navigation
+      if (timeDiff < 150 && deltaY < 10 && Math.abs(translationY) < 20) {
         resetTranslation();
         return;
       }
-      lastScrollTime.current = now;
 
-      if (isTransitioning) {
+      if (isTransitioning || !isScrolling.current) {
         resetTranslation();
         return;
       }
 
-      const threshold = 100;
-      const shouldNavigate = Math.abs(translationY) > threshold || Math.abs(velocityY) > 500;
+      const threshold = 80;
+      const velocityThreshold = 400;
+      const shouldNavigate = Math.abs(translationY) > threshold || Math.abs(velocityY) > velocityThreshold;
 
       if (shouldNavigate) {
+        hideUI();
+        
         if (translationY < 0 && currentSectionIndex < sections.length - 1) {
           navigateToSection(currentSectionIndex + 1, 'next');
           return;
@@ -232,7 +240,6 @@ const ReadingScreen = ({ navigation, route }) => {
 
   const navigateToSection = (newIndex, direction) => {
     setIsTransitioning(true);
-    hideSectionCarousel();
     
     const slideDistance = direction === 'next' ? -screenHeight : screenHeight;
     
@@ -256,15 +263,28 @@ const ReadingScreen = ({ navigation, route }) => {
 
   const jumpToSection = (index) => {
     setCurrentSectionIndex(index);
-    hideSectionCarousel();
+    setShowUI(false);
+    
+    Animated.timing(uiOpacity, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
   };
 
   const handleBackPress = () => {
     navigation.goBack();
   };
 
+  const handleContainerPress = () => {
+    // Only toggle UI if we're not currently scrolling
+    if (!isScrolling.current) {
+      toggleUI();
+    }
+  };
+
   const renderSectionCarousel = () => {
-    if (!showSectionCarousel) return null;
+    if (!showUI) return null;
 
     const renderSectionItem = ({ item, index }) => {
       const isCurrentSection = index === currentSectionIndex;
@@ -310,7 +330,7 @@ const ReadingScreen = ({ navigation, route }) => {
       <Animated.View 
         style={[
           styles.sectionCarouselContainer,
-          { opacity: carouselOpacity }
+          { opacity: uiOpacity }
         ]}
       >
         <FlatList
@@ -320,9 +340,9 @@ const ReadingScreen = ({ navigation, route }) => {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.carouselContent}
-          initialScrollIndex={Math.max(0, currentSectionIndex - 1)}
+          initialScrollIndex={Math.max(0, Math.min(currentSectionIndex, sections.length - 1))}
           getItemLayout={(data, index) => ({
-            length: 120,
+            length: 130,
             offset: 130 * index,
             index,
           })}
@@ -384,12 +404,12 @@ const ReadingScreen = ({ navigation, route }) => {
         </Animated.View>
       </SafeAreaView>
 
-      <TouchableWithoutFeedback onPress={toggleUI}>
+      <TouchableWithoutFeedback onPress={handleContainerPress}>
         <View style={styles.contentWrapper}>
           <PanGestureHandler
             onGestureEvent={handleGestureEvent}
             onHandlerStateChange={handleGestureStateChange}
-            enabled={!showSectionCarousel}
+            enabled={!showUI}
           >
             <Animated.View 
               style={[
@@ -567,7 +587,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   carouselContent: {
-    paddingHorizontal: 0,
+    paddingHorizontal: 12,
   },
   pageItem: {
     width: 110,
@@ -579,7 +599,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e5e5',
     justifyContent: 'space-between',
-    marginLeft: 12,
   },
   pageItemDark: {
     backgroundColor: '#1a1a1a',

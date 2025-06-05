@@ -40,12 +40,12 @@ const LibraryScreen = ({ navigation }) => {
     };
   }, []);
 
-  // Only load data on initial mount, not every time the screen comes into focus
-  useEffect(() => {
-    if (!hasInitiallyLoaded && isMountedRef.current) {
+  // Force refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
       loadBooksAndCategories();
-    }
-  }, [hasInitiallyLoaded]);
+    }, [])
+  );
 
   useEffect(() => {
     Animated.timing(backgroundColorAnim, {
@@ -56,8 +56,6 @@ const LibraryScreen = ({ navigation }) => {
   }, [settings.isDarkMode, backgroundColorAnim]);
 
   const loadBooksAndCategories = useCallback(async () => {
-    if (hasInitiallyLoaded) return; // Prevent unnecessary reloads
-    
     setIsLoading(true);
     
     try {
@@ -103,13 +101,7 @@ const LibraryScreen = ({ navigation }) => {
         setIsLoading(false);
       }
     }
-  }, [storageManager, hasInitiallyLoaded]);
-
-  // Force refresh function for when we actually need to reload data
-  const forceRefresh = useCallback(async () => {
-    setHasInitiallyLoaded(false);
-    await loadBooksAndCategories();
-  }, [loadBooksAndCategories]);
+  }, [storageManager]);
 
   const handleBookPress = useCallback(async (book) => {
     if (uploadingBooks.has(book.id)) {
@@ -141,11 +133,11 @@ const LibraryScreen = ({ navigation }) => {
 
   const handleDeleteBook = useCallback(async (bookId) => {
     try {
-      // Update local state immediately for better UX
-      setBooks(prev => prev.filter(book => book.id !== bookId));
-      
-      // Delete from storage
+      // Delete from storage first
       await storageManager.deleteBook(bookId);
+      
+      // Update local state
+      setBooks(prev => prev.filter(book => book.id !== bookId));
       
       // Check if we need to remove empty categories
       const updatedBooks = books.filter(book => book.id !== bookId);
@@ -164,9 +156,9 @@ const LibraryScreen = ({ navigation }) => {
       console.error('Error deleting book:', error);
       Alert.alert('Error', 'Could not remove book');
       // Force refresh to restore consistent state
-      forceRefresh();
+      loadBooksAndCategories();
     }
-  }, [books, categories, storageManager, forceRefresh]);
+  }, [books, categories, storageManager, loadBooksAndCategories]);
 
   const ensureRecentCategory = useCallback(async () => {
     try {

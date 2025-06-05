@@ -43,6 +43,11 @@ const ProfileScreen = ({ navigation }) => {
             try {
               await storageManager.clearLibrary();
               Alert.alert('Success', 'Library cleared successfully');
+              
+              // Force navigation to refresh the Library screen
+              if (navigation.getParent()) {
+                navigation.getParent().navigate('Library', { refresh: true });
+              }
             } catch (error) {
               Alert.alert('Error', 'Failed to clear library');
             }
