@@ -290,6 +290,18 @@ const LibraryScreen = ({ navigation }) => {
         extractionResult
       );
 
+      // Create book object for background processing
+      const bookForProcessing = {
+        id: bookId,
+        name: file.name,
+        type: file.mimeType,
+      };
+
+      // Start background pre-processing
+      setTimeout(() => {
+        require('../utils/bookProcessor').bookProcessor.preProcessBook(bookForProcessing, extractionResult);
+      }, 500);
+
       if (!isMountedRef.current) return;
 
       // Update the UI after successful upload
@@ -333,7 +345,7 @@ const LibraryScreen = ({ navigation }) => {
       Alert.alert('Upload Failed', error.message || 'Failed to process the document');
     }
   }, [storageManager, pdfExtractor, epubExtractor]);
-
+  
   const handleCreateCategory = useCallback(async (name) => {
     try {
       const newCategory = await storageManager.createCategory(name);

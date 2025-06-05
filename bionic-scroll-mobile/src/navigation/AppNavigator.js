@@ -3,7 +3,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { StatusBar } from 'react-native';
+import { StatusBar, Animated, View } from 'react-native';
 
 import LibraryScreen from '../screens/LibraryScreen';
 import ReadingScreen from '../screens/ReadingScreen';
@@ -55,28 +55,64 @@ const LibraryStack = () => (
 
 const AppNavigator = () => {
   const [isReady, setIsReady] = React.useState(false);
+  const [splashFinished, setSplashFinished] = React.useState(false);
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const scaleAnim = React.useRef(new Animated.Value(1.1)).current;
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setIsReady(true);
-    }, 2000);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, []);
 
+  const handleSplashFinished = () => {
+    // Smooth entrance animation for the main app
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setSplashFinished(true);
+    });
+  };
+
   if (!isReady) {
-    return <SplashScreenComponent />;
+    return null;
   }
 
   return (
     <SettingsProvider>
-      <NavigationContainer>
-        <StatusBar 
-          backgroundColor="transparent"
-          translucent
-        />
-        <LibraryStack />
-      </NavigationContainer>
+      <View style={{ flex: 1 }}>
+        <Animated.View 
+          style={{ 
+            flex: 1, 
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }]
+          }}
+        >
+          <NavigationContainer>
+            <StatusBar 
+              backgroundColor="transparent"
+              translucent
+            />
+            <LibraryStack />
+          </NavigationContainer>
+        </Animated.View>
+        
+        {!splashFinished && (
+          <SplashScreenComponent onFinished={handleSplashFinished} />
+        )}
+      </View>
     </SettingsProvider>
   );
 };

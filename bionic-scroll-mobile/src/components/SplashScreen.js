@@ -12,16 +12,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const { width, height } = Dimensions.get('window');
 
-const SplashScreen = () => {
+const SplashScreen = ({ onFinished }) => {
   const systemColorScheme = useColorScheme();
   const isDarkMode = systemColorScheme === 'dark';
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.3)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const exitAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.sequence([
+    const showAnimation = Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 800,
@@ -39,11 +40,38 @@ const SplashScreen = () => {
           useNativeDriver: true,
         }),
       ]),
-    ]).start();
+    ]);
+
+    const hideAnimation = Animated.parallel([
+      Animated.timing(exitAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.8,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    showAnimation.start(() => {
+      setTimeout(() => {
+        hideAnimation.start(() => {
+          onFinished?.();
+        });
+      }, 1500);
+    });
   }, []);
 
   return (
-    <View style={[styles.container, isDarkMode && styles.containerDark]}>
+    <Animated.View 
+      style={[
+        styles.container, 
+        isDarkMode && styles.containerDark,
+        { opacity: exitAnim }
+      ]}
+    >
       <LinearGradient
         colors={isDarkMode 
           ? ['#0f172a', '#1e293b', '#334155']
@@ -103,13 +131,18 @@ const SplashScreen = () => {
           </View>
         </View>
       </LinearGradient>
-    </View>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
     backgroundColor: '#ffffff',
   },
   containerDark: {

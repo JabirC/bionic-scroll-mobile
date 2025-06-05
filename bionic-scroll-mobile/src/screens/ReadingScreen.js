@@ -11,18 +11,18 @@ import {
   Alert,
   ScrollView,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
-import { WebView } from 'react-native-webview';
 
 import TextRenderer from '../components/TextRenderer';
-import { TextProcessor } from '../utils/textProcessor';
 import { StorageManager } from '../utils/storageManager';
 import { SettingsManager } from '../utils/settingsManager';
+import { bookProcessor } from '../utils/bookProcessor';
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
 
@@ -34,13 +34,13 @@ const ReadingScreen = ({ navigation, route }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showUI, setShowUI] = useState(true);
   const [isPageMode, setIsPageMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState({
     isDarkMode: false,
     fontSize: 22,
     bionicMode: false,
   });
 
-  const textProcessor = useRef(new TextProcessor()).current;
   const storageManager = useRef(new StorageManager()).current;
   const settingsManager = useRef(new SettingsManager()).current;
   const translateY = useRef(new Animated.Value(0)).current;
@@ -51,7 +51,7 @@ const ReadingScreen = ({ navigation, route }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      loadSettings();
+      loadAndProcessBook();
       
       const parent = navigation.getParent();
       if (parent) {
@@ -71,28 +71,39 @@ const ReadingScreen = ({ navigation, route }) => {
     }, [navigation])
   );
 
-  const loadSettings = async () => {
-    const userSettings = await settingsManager.getSettings();
-    setSettings(userSettings);
-    
-    const isPDF = book.type === 'application/pdf';
-    setIsPageMode(isPDF || bookData.extractionFailed);
-    
-    if (isPDF && bookData.originalPages) {
-      setSections(bookData.originalPages);
-    } else if (!isPDF && bookData.text) {
-      textProcessor.setFontSize(userSettings.fontSize || 22);
-      const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
-      const processedSections = rawSections.map(section => 
-        textProcessor.processSection(section, userSettings.bionicMode || false)
-      );
-      setSections(processedSections);
+  const loadAndProcessBook = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Load settings
+      const userSettings = await settingsManager.getSettings();
+      setSettings(userSettings);
+
+      // Process book with current settings
+      const processed = await bookProcessor.processBook(book, bookData, userSettings);
+      
+      if (processed.error) {
+        Alert.alert('Error', processed.error);
+        navigation.goBack();
+        return;
+      }
+
+      setSections(processed.sections);
+      setIsPageMode(processed.isPageMode);
+      
+      // Restore reading position
+      if (book.readingPosition && book.readingPosition.sectionIndex) {
+        setCurrentSectionIndex(Math.min(book.readingPosition.sectionIndex, processed.sections.length - 1));
+      }
+
+    } catch (error) {
+      console.error('Error loading book:', error);
+      Alert.alert('Error', 'Failed to load book content');
+      navigation.goBack();
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    initializeSections();
-  }, []);
 
   useEffect(() => {
     if (sections.length > 0 && !isPageMode) {
@@ -104,45 +115,6 @@ const ReadingScreen = ({ navigation, route }) => {
       });
     }
   }, [currentSectionIndex, sections.length]);
-
-  const initializeSections = async () => {
-    const userSettings = await settingsManager.getSettings();
-    setSettings(userSettings);
-
-    const isPDF = book.type === 'application/pdf';
-    setIsPageMode(isPDF || bookData.extractionFailed);
-
-    if (isPDF) {
-      if (bookData.originalPages && bookData.originalPages.length > 0) {
-        setSections(bookData.originalPages);
-      } else {
-        Alert.alert('Error', 'Unable to display this PDF');
-        navigation.goBack();
-      }
-      return;
-    }
-
-    if (!bookData.text) {
-      Alert.alert('Error', 'No content available');
-      navigation.goBack();
-      return;
-    }
-
-    textProcessor.setFontSize(userSettings.fontSize || 22);
-    const rawSections = textProcessor.splitTextIntoScreenSections(bookData.text);
-    
-    console.log(`Created ${rawSections.length} sections from text of ${bookData.text.length} characters`);
-    
-    const processedSections = rawSections.map(section => 
-      textProcessor.processSection(section, userSettings.bionicMode || false)
-    );
-    
-    setSections(processedSections);
-    
-    if (book.readingPosition && book.readingPosition.sectionIndex) {
-      setCurrentSectionIndex(book.readingPosition.sectionIndex);
-    }
-  };
 
   const toggleUI = () => {
     const shouldShowUI = !showUI;
@@ -278,13 +250,13 @@ const ReadingScreen = ({ navigation, route }) => {
 
   const handleContainerPress = () => {
     // Only toggle UI if we're not currently scrolling
-    if (!isScrolling.current) {
+    if (!isScrolling.current && !isLoading) {
       toggleUI();
     }
   };
 
   const renderSectionCarousel = () => {
-    if (!showUI) return null;
+    if (!showUI || isLoading) return null;
 
     const renderSectionItem = ({ item, index }) => {
       const isCurrentSection = index === currentSectionIndex;
@@ -375,6 +347,22 @@ const ReadingScreen = ({ navigation, route }) => {
       </View>
     );
   };
+
+  const renderLoadingScreen = () => (
+    <View style={[styles.loadingContainer, settings.isDarkMode && styles.loadingContainerDark]}>
+      <ActivityIndicator 
+        size="large" 
+        color={settings.isDarkMode ? '#ffffff' : '#000000'} 
+      />
+      <Text style={[styles.loadingText, settings.isDarkMode && styles.loadingTextDark]}>
+        Preparing your book...
+      </Text>
+    </View>
+  );
+
+  if (isLoading) {
+    return renderLoadingScreen();
+  }
 
   const currentSection = sections[currentSectionIndex];
   const progress = sections.length > 0 ? ((currentSectionIndex + 1) / sections.length) * 100 : 0;
@@ -478,6 +466,25 @@ const styles = StyleSheet.create({
   },
   containerDark: {
     backgroundColor: '#000000',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 40,
+  },
+  loadingContainerDark: {
+    backgroundColor: '#000000',
+  },
+  loadingText: {
+    marginTop: 20,
+    fontSize: 16,
+    color: '#6b7280',
+    fontFamily: 'System',
+  },
+  loadingTextDark: {
+    color: '#9ca3af',
   },
   progressBar: {
     height: 3,
